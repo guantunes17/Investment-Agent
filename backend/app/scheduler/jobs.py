@@ -1,53 +1,20 @@
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import select
 
 from app.api.deps import async_session, get_redis
 from app.data.cache import CacheService
 from app.data.providers.bcb import BCBProvider
-from app.data.providers.registry import DataProviderRegistry
 from app.models.fixed_income import FixedIncomePosition
-from app.models.stock_position import StockPosition
 from app.yield_engine.calculator import YieldCalculator
 from app.yield_engine.rates import RateService
 
 logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
-
-
-async def refresh_market_quotes():
-    """Refresh stock/FII quotes every 15 min during market hours."""
-    now = datetime.utcnow()
-    hour_brt = (now.hour - 3) % 24
-    if not (10 <= hour_brt <= 18):
-        return
-
-    logger.info("Refreshing market quotes...")
-    try:
-        redis = await get_redis()
-        cache = CacheService(redis)
-        registry = DataProviderRegistry()
-
-        async with async_session() as db:
-            result = await db.execute(select(StockPosition))
-            positions = result.scalars().all()
-
-        for pos in positions:
-            try:
-                quote = await registry.get_quote("stock", pos.ticker)
-                await cache.set_quote(pos.ticker, quote)
-            except Exception as e:
-                logger.warning(f"Failed to refresh quote for {pos.ticker}: {e}")
-                continue
-
-        logger.info(f"Refreshed quotes for {len(positions)} stock positions")
-    except Exception as e:
-        logger.error(f"Error in refresh_market_quotes: {e}")
 
 
 async def fetch_bcb_rates():
@@ -139,14 +106,15 @@ async def check_maturity_alerts():
 
 
 def setup_scheduler():
-    """Configure and return the scheduler with all jobs."""
-    scheduler.add_job(
-        refresh_market_quotes,
-        IntervalTrigger(minutes=15),
-        id="refresh_market_quotes",
-        replace_existing=True,
-    )
+    """Configure and return the scheduler with all jobs.
 
+    Only zero-cost internal jobs run on a schedule:
+    - BCB rates: free public API, once daily
+    - Fixed-income recalc: internal math, no external calls
+    - Maturity alerts: internal DB check
+
+    Stock/FII quotes are fetched on-demand when the user opens the app.
+    """
     scheduler.add_job(
         fetch_bcb_rates,
         CronTrigger(hour=12, minute=0),  # 09:00 BRT = 12:00 UTC
@@ -156,7 +124,7 @@ def setup_scheduler():
 
     scheduler.add_job(
         recalculate_fixed_income,
-        CronTrigger(hour=12, minute=30),  # After rates are fetched
+        CronTrigger(hour=12, minute=30),
         id="recalculate_fixed_income",
         replace_existing=True,
     )

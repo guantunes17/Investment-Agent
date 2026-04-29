@@ -60,7 +60,7 @@ services:
       - ./frontend:/app
       - /app/node_modules
       - /app/.next
-    command: npm run dev
+    command: npx next dev --turbopack --port 3000
 
   nginx:
     image: nginx:alpine

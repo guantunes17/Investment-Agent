@@ -7,10 +7,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
   Bell,
-  Key,
-  RefreshCw,
   Download,
-  Shield,
   Clock,
   AlertTriangle,
   FileSpreadsheet,
@@ -58,12 +55,6 @@ export default function SettingsPage() {
   const [maturityAlertDays, setMaturityAlertDays] = useState("30");
   const [notifyOnRecommendationChange, setNotifyOnRecommendationChange] = useState(true);
   const [notifyOnRateChange, setNotifyOnRateChange] = useState(true);
-
-  const [openaiKey, setOpenaiKey] = useState("");
-  const [alphaVantageKey, setAlphaVantageKey] = useState("");
-  const [brapiToken, setBrapiToken] = useState("");
-
-  const [refreshInterval, setRefreshInterval] = useState("15");
 
   const handleSave = () => {
     toast.success("Settings saved successfully");
@@ -134,61 +125,6 @@ export default function SettingsPage() {
               />
             </div>
           </div>
-        </div>
-      </GlassCard>
-
-      {/* API Keys */}
-      <GlassCard>
-        <div className="mb-5 flex items-center gap-2">
-          <Key className="h-5 w-5 text-hold" />
-          <h2 className="text-lg font-semibold text-text-primary">API Keys</h2>
-        </div>
-        <p className="mb-4 text-xs text-text-muted">
-          Keys are stored securely and never exposed to the frontend after saving.
-        </p>
-        <div className="space-y-4">
-          <Input
-            label="OpenAI API Key"
-            type="password"
-            placeholder="sk-..."
-            value={openaiKey}
-            onChange={(e) => setOpenaiKey(e.target.value)}
-            icon={<Shield className="h-4 w-4" />}
-          />
-          <Input
-            label="Alpha Vantage API Key (optional)"
-            type="password"
-            placeholder="Your Alpha Vantage key"
-            value={alphaVantageKey}
-            onChange={(e) => setAlphaVantageKey(e.target.value)}
-          />
-          <Input
-            label="brapi.dev Token (optional)"
-            type="password"
-            placeholder="Your brapi token"
-            value={brapiToken}
-            onChange={(e) => setBrapiToken(e.target.value)}
-          />
-        </div>
-      </GlassCard>
-
-      {/* Data Refresh */}
-      <GlassCard>
-        <div className="mb-5 flex items-center gap-2">
-          <RefreshCw className="h-5 w-5 text-profit" />
-          <h2 className="text-lg font-semibold text-text-primary">Data Refresh</h2>
-        </div>
-        <div className="space-y-4">
-          <Input
-            label="Stock/FII refresh interval (minutes)"
-            type="number"
-            placeholder="15"
-            value={refreshInterval}
-            onChange={(e) => setRefreshInterval(e.target.value)}
-          />
-          <p className="text-xs text-text-muted">
-            BCB rates (CDI, Selic, IPCA) are fetched daily at 09:00 BRT automatically.
-          </p>
         </div>
       </GlassCard>
 
