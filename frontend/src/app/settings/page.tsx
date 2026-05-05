@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { GlassCard } from "@/components/ui/glass-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { apiFetch } from "@/lib/api";
 import { toast } from "sonner";
 import {
   Bell,
@@ -11,6 +13,7 @@ import {
   Clock,
   AlertTriangle,
   FileSpreadsheet,
+  Scale,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -50,19 +53,51 @@ function Toggle({
 }
 
 export default function SettingsPage() {
+  const queryClient = useQueryClient();
   const [inAppNotifications, setInAppNotifications] = useState(true);
   const [priceAlertThreshold, setPriceAlertThreshold] = useState("5");
   const [maturityAlertDays, setMaturityAlertDays] = useState("30");
   const [notifyOnRecommendationChange, setNotifyOnRecommendationChange] = useState(true);
   const [notifyOnRateChange, setNotifyOnRateChange] = useState(true);
 
-  const handleSave = () => {
-    toast.success("Settings saved successfully");
+  const [stockTarget, setStockTarget] = useState("60");
+  const [fiTarget, setFiTarget] = useState("30");
+  const [fiiTarget, setFiiTarget] = useState("10");
+
+  const { data: targets } = useQuery<Record<string, number>>({
+    queryKey: ["allocation-targets"],
+    queryFn: () => apiFetch("/portfolio/allocation-targets"),
+  });
+
+  useEffect(() => {
+    if (targets) {
+      setStockTarget(String(targets["stock"] ?? 60));
+      setFiTarget(String(targets["fixed-income"] ?? 30));
+      setFiiTarget(String(targets["fii"] ?? 10));
+    }
+  }, [targets]);
+
+  const handleSave = async () => {
+    try {
+      await apiFetch("/portfolio/allocation-targets", {
+        method: "PUT",
+        body: JSON.stringify({
+          stock: Number(stockTarget),
+          "fixed-income": Number(fiTarget),
+          fii: Number(fiiTarget),
+        }),
+      });
+      toast.success("Settings saved successfully");
+      queryClient.invalidateQueries({ queryKey: ["allocation-targets"] });
+      queryClient.invalidateQueries({ queryKey: ["rebalance"] });
+    } catch {
+      toast.error("Failed to save allocation targets");
+    }
   };
 
   const handleExportCSV = async (type: string) => {
     try {
-      const res = await fetch(`/api/portfolio/${type}?format=csv`);
+      const res = await fetch(`/api/portfolio/export/${type}`);
       if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -126,6 +161,42 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+      </GlassCard>
+
+      {/* Allocation Targets */}
+      <GlassCard>
+        <div className="mb-5 flex items-center gap-2">
+          <Scale className="h-5 w-5 text-profit" />
+          <h2 className="text-lg font-semibold text-text-primary">Allocation Targets</h2>
+        </div>
+        <p className="mb-4 text-sm text-text-muted">
+          Set your ideal portfolio allocation. Targets must sum to 100%.
+        </p>
+        <div className="grid grid-cols-3 gap-4">
+          <Input
+            label="Stocks (%)"
+            type="number"
+            value={stockTarget}
+            onChange={(e) => setStockTarget(e.target.value)}
+          />
+          <Input
+            label="Fixed-Income (%)"
+            type="number"
+            value={fiTarget}
+            onChange={(e) => setFiTarget(e.target.value)}
+          />
+          <Input
+            label="FIIs (%)"
+            type="number"
+            value={fiiTarget}
+            onChange={(e) => setFiiTarget(e.target.value)}
+          />
+        </div>
+        {Math.abs(Number(stockTarget) + Number(fiTarget) + Number(fiiTarget) - 100) > 0.01 && (
+          <p className="mt-2 text-xs text-loss">
+            Targets sum to {Number(stockTarget) + Number(fiTarget) + Number(fiiTarget)}% (must be 100%)
+          </p>
+        )}
       </GlassCard>
 
       {/* Export */}

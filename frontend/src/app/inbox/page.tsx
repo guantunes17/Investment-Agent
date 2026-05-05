@@ -95,7 +95,7 @@ export default function InboxPage() {
   const { data: notifications = [], isLoading } = useQuery<Notification[]>({
     queryKey: ["notifications"],
     queryFn: () => apiFetch<Notification[]>("/notifications/"),
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
   });
 
   const markReadMutation = useMutation({

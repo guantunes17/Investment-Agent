@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
+import { useQueryClient } from "@tanstack/react-query";
 import { Tabs } from "@/components/ui/tabs";
 import { GlassCard } from "@/components/ui/glass-card";
 import { Button } from "@/components/ui/button";
@@ -9,11 +10,12 @@ import { Modal } from "@/components/ui/modal";
 import { Badge, type RecommendationType } from "@/components/ui/badge";
 import { Sparkline } from "@/components/ui/sparkline";
 import { AllocationChart } from "@/components/charts/allocation-chart";
+import { CorrelationMatrix } from "@/components/charts/correlation-matrix";
 import { LoadingCard } from "@/components/ui/loading";
-import { usePortfolioStore, type AssetType } from "@/stores/portfolio-store";
 import { usePortfolio } from "@/hooks/use-portfolio";
+import type { Position } from "@/stores/portfolio-store";
 import { formatCurrency, formatPercent, cn } from "@/lib/utils";
-import { Plus, Upload, FileSpreadsheet } from "lucide-react";
+import { Plus, Upload, FileSpreadsheet, Download } from "lucide-react";
 import { AddPositionForm } from "./add-position-form";
 import { toast } from "sonner";
 
@@ -24,25 +26,60 @@ const tabs = [
   { id: "fii", label: "FIIs" },
 ];
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
+
+const templateOptions = [
+  { label: "Stocks", type: "stock" },
+  { label: "Fixed-Income", type: "fixed-income" },
+  { label: "FIIs", type: "fii" },
+];
+
 export default function PortfolioPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [showAddModal, setShowAddModal] = useState(false);
-  const { isLoading } = usePortfolio();
-  const { positions } = usePortfolioStore();
+  const [showTemplates, setShowTemplates] = useState(false);
+  const { isLoading, positions } = usePortfolio();
+  const queryClient = useQueryClient();
 
   const filteredPositions =
     activeTab === "all"
       ? positions
       : positions.filter((p) => p.assetType === activeTab);
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
+  const handleDownloadTemplate = (type: string) => {
+    const link = document.createElement("a");
+    link.href = `${API_BASE}/portfolio/template/${type}`;
+    link.download = `template_${type}.csv`;
+    link.click();
+    setShowTemplates(false);
+  };
+
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
-    if (file) {
-      toast.success(`Imported ${file.name}`, {
-        description: "Processing your portfolio CSV...",
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch(`${API_BASE}/portfolio/import-csv`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) throw new Error(`Import failed: ${res.statusText}`);
+      const result = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["portfolio"] });
+      toast.success(`Imported ${result.imported} positions from ${file.name}`, {
+        description: result.errors.length
+          ? `${result.errors.length} row(s) had errors`
+          : undefined,
+      });
+    } catch (err) {
+      toast.error("CSV import failed", {
+        description: err instanceof Error ? err.message : "Unknown error",
       });
     }
-  }, []);
+  }, [queryClient]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -85,10 +122,32 @@ export default function PortfolioPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-text-primary">Portfolio</h1>
-        <Button variant="primary" onClick={() => setShowAddModal(true)}>
-          <Plus className="h-4 w-4" />
-          Add Position
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Button variant="ghost" size="sm" onClick={() => setShowTemplates(!showTemplates)}>
+              <Download className="h-4 w-4" />
+              Templates
+            </Button>
+            {showTemplates && (
+              <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-xl border border-glass-border bg-glass p-1 backdrop-blur-xl shadow-lg">
+                {templateOptions.map((opt) => (
+                  <button
+                    key={opt.type}
+                    onClick={() => handleDownloadTemplate(opt.type)}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-text-secondary transition-colors hover:bg-glass-hover hover:text-text-primary"
+                  >
+                    <FileSpreadsheet className="h-3.5 w-3.5" />
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <Button variant="primary" onClick={() => setShowAddModal(true)}>
+            <Plus className="h-4 w-4" />
+            Add Position
+          </Button>
+        </div>
       </div>
 
       {/* Allocation chart for 'all' tab */}
@@ -140,6 +199,9 @@ export default function PortfolioPage() {
         </div>
       </div>
 
+      {/* Correlation Matrix */}
+      {positions.length >= 2 && <CorrelationMatrix />}
+
       {/* Add Position Modal */}
       <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="Add Position">
         <AddPositionForm onClose={() => setShowAddModal(false)} />
@@ -152,7 +214,7 @@ function PositionsTable({
   positions,
   showType,
 }: {
-  positions: ReturnType<typeof usePortfolioStore.getState>["positions"];
+  positions: Position[];
   showType: boolean;
 }) {
   return (
@@ -224,7 +286,7 @@ function PositionsTable({
 function FixedIncomeGrid({
   positions,
 }: {
-  positions: ReturnType<typeof usePortfolioStore.getState>["positions"];
+  positions: Position[];
 }) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

@@ -13,6 +13,8 @@ import {
   Inbox,
   Settings,
   TrendingUp,
+  DollarSign,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
@@ -20,6 +22,8 @@ import { apiFetch } from "@/lib/api";
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/portfolio", label: "Portfolio", icon: Briefcase },
+  { href: "/dividends", label: "Dividends", icon: DollarSign },
+  { href: "/performance", label: "Performance", icon: BarChart3 },
   { href: "/watchlist", label: "Watchlist", icon: Eye },
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/reports", label: "Reports", icon: FileText },
@@ -33,7 +37,7 @@ export function Sidebar() {
   const { data: countData } = useQuery<{ unread_count: number }>({
     queryKey: ["notifications-count"],
     queryFn: () => apiFetch("/notifications/count"),
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
   });
   const unreadCount = countData?.unread_count ?? 0;
 

@@ -1,14 +1,16 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { GlassCard } from "@/components/ui/glass-card";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import { Badge, type RecommendationType } from "@/components/ui/badge";
 import { Sparkline } from "@/components/ui/sparkline";
 import { LoadingCard } from "@/components/ui/loading";
-import { usePortfolioStore } from "@/stores/portfolio-store";
+import { PerformanceChart } from "@/components/charts/performance-chart";
 import { usePortfolio } from "@/hooks/use-portfolio";
+import { apiFetch } from "@/lib/api";
 import { formatCurrency, formatPercent, cn } from "@/lib/utils";
-import { TrendingUp, TrendingDown, AlertCircle, Clock, ArrowUpRight } from "lucide-react";
+import { TrendingUp, TrendingDown, AlertCircle, Clock, ArrowUpRight, Scale } from "lucide-react";
 import { BarChart, Bar, XAxis, ResponsiveContainer, Tooltip, Cell } from "recharts";
 
 const assetClassColors: Record<string, string> = {
@@ -17,9 +19,20 @@ const assetClassColors: Record<string, string> = {
   fii: "#aa33ff",
 };
 
+interface RebalanceData {
+  current: Record<string, number>;
+  targets: Record<string, number>;
+  suggestions: { assetClass: string; action: string; amount: number; description: string }[];
+  totalValue: number;
+}
+
 export default function Dashboard() {
-  const { isLoading } = usePortfolio();
-  const { positions, totalValue, dailyPnl, dailyPnlPercent } = usePortfolioStore();
+  const { isLoading, positions, totalValue, dailyPnl, dailyPnlPercent } = usePortfolio();
+
+  const { data: rebalanceData } = useQuery<RebalanceData>({
+    queryKey: ["rebalance"],
+    queryFn: () => apiFetch("/portfolio/rebalance"),
+  });
 
   const allocationData = Object.entries(
     positions.reduce<Record<string, number>>((acc, p) => {
@@ -117,6 +130,44 @@ export default function Dashboard() {
               <div key={item.name} className="flex items-center gap-2">
                 <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.fill }} />
                 <span className="text-xs capitalize text-text-secondary">{item.name.replace("-", " ")}</span>
+              </div>
+            ))}
+          </div>
+        </GlassCard>
+      )}
+
+      {/* Performance vs Benchmark */}
+      <PerformanceChart />
+
+      {/* Rebalance Suggestions */}
+      {rebalanceData && rebalanceData.suggestions.length > 0 && (
+        <GlassCard>
+          <div className="mb-4 flex items-center gap-2">
+            <Scale className="h-4 w-4 text-secondary" />
+            <h3 className="text-sm font-medium text-text-muted">Rebalance Suggestions</h3>
+          </div>
+          <div className="mb-4 flex gap-4">
+            {Object.entries(rebalanceData.current).map(([key, val]) => (
+              <div key={key} className="flex-1 rounded-xl bg-white/5 p-3 text-center">
+                <p className="text-[10px] uppercase tracking-wider text-text-muted">{key.replace("-", " ")}</p>
+                <p className="mt-1 text-lg font-bold text-text-primary">{val}%</p>
+                <p className="text-xs text-text-muted">Target: {rebalanceData.targets[key]}%</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-col gap-2">
+            {rebalanceData.suggestions.map((s) => (
+              <div
+                key={s.assetClass}
+                className="flex items-center gap-3 rounded-lg bg-white/5 px-3 py-2"
+              >
+                <span className={cn(
+                  "rounded-md px-2 py-0.5 text-[10px] font-bold uppercase",
+                  s.action === "Buy" ? "bg-profit/10 text-profit" : "bg-loss/10 text-loss"
+                )}>
+                  {s.action}
+                </span>
+                <span className="text-sm text-text-secondary">{s.description}</span>
               </div>
             ))}
           </div>

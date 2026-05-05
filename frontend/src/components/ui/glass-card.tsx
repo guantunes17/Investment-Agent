@@ -1,9 +1,8 @@
 "use client";
 
-import { motion, type HTMLMotionProps } from "framer-motion";
 import { cn } from "@/lib/utils";
 
-interface GlassCardProps extends HTMLMotionProps<"div"> {
+interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
   hover?: boolean;
   glow?: string;
   children: React.ReactNode;
@@ -18,10 +17,7 @@ export function GlassCard({
   ...props
 }: GlassCardProps) {
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.97 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.3, ease: "easeOut" }}
+    <div
       className={cn(
         "relative rounded-2xl border border-glass-border bg-glass p-6 backdrop-blur-[20px]",
         "shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]",
@@ -45,6 +41,6 @@ export function GlassCard({
         />
       )}
       <div className="relative z-10">{children}</div>
-    </motion.div>
+    </div>
   );
 }
