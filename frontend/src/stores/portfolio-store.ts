@@ -20,5 +20,16 @@ export interface Position {
   currentValue?: number;
   yieldPercent?: number;
   taxStatus?: string;
+  /** Value from bank/broker — overrides model quote when set */
+  reportedPositionValue?: number | null;
+  /** Fixed income only — app's modeled balance before statement override */
+  modelEstimatedValue?: number | null;
+  cdiIndexMode?: "FIXED" | "RANGE";
+  rateCeilingValue?: number | null;
+  projectionCdiPercent?: number | null;
+  /** Raw contract rate_value (% of CDI, spread, etc.) for editing */
+  rateValueForCdi?: number | null;
+  /** Backend RateType for fixed income (e.g. PCT_CDI) */
+  rateContractType?: string;
   priceHistory?: number[];
 }

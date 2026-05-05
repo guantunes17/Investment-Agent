@@ -34,10 +34,18 @@ const templateOptions = [
   { label: "FIIs", type: "fii" },
 ];
 
+const csvImportHints = [
+  { value: "auto", label: "Auto-detect" },
+  { value: "fixed-income", label: "Fixed income (CDB, LCI, …)" },
+  { value: "stock", label: "Stocks / FIIs" },
+] as const;
+
 export default function PortfolioPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [showAddModal, setShowAddModal] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [csvImportHint, setCsvImportHint] =
+    useState<(typeof csvImportHints)[number]["value"]>("auto");
   const { isLoading, positions } = usePortfolio();
   const queryClient = useQueryClient();
 
@@ -60,6 +68,9 @@ export default function PortfolioPage() {
 
     const formData = new FormData();
     formData.append("file", file);
+    if (csvImportHint !== "auto") {
+      formData.append("asset_type_hint", csvImportHint);
+    }
 
     try {
       const res = await fetch(`${API_BASE}/portfolio/import-csv`, {
@@ -69,9 +80,13 @@ export default function PortfolioPage() {
       if (!res.ok) throw new Error(`Import failed: ${res.statusText}`);
       const result = await res.json();
       queryClient.invalidateQueries({ queryKey: ["portfolio"] });
+      const errPreview =
+        Array.isArray(result.errors) && result.errors.length > 0
+          ? result.errors.slice(0, 3).join(" · ")
+          : undefined;
       toast.success(`Imported ${result.imported} positions from ${file.name}`, {
-        description: result.errors.length
-          ? `${result.errors.length} row(s) had errors`
+        description: result.errors?.length
+          ? `${result.errors.length} row(s) skipped${errPreview ? `: ${errPreview}` : ""}`
           : undefined,
       });
     } catch (err) {
@@ -79,7 +94,7 @@ export default function PortfolioPage() {
         description: err instanceof Error ? err.message : "Unknown error",
       });
     }
-  }, [queryClient]);
+  }, [queryClient, csvImportHint]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -176,28 +191,50 @@ export default function PortfolioPage() {
       </div>
 
       {/* CSV Drop Zone */}
-      <div
-        {...getRootProps()}
-        className={cn(
-          "cursor-pointer rounded-2xl border-2 border-dashed border-glass-border p-8 text-center transition-colors",
-          isDragActive && "border-accent bg-accent/5"
-        )}
-      >
-        <input {...getInputProps()} />
-        <div className="flex flex-col items-center gap-3">
-          {isDragActive ? (
-            <Upload className="h-8 w-8 text-accent" />
-          ) : (
-            <FileSpreadsheet className="h-8 w-8 text-text-muted" />
+      <GlassCard className="space-y-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs font-medium text-text-muted">CSV type (when auto-detect fails)</p>
+          <select
+            value={csvImportHint}
+            onChange={(e) =>
+              setCsvImportHint(e.target.value as (typeof csvImportHints)[number]["value"])
+            }
+            onClick={(e) => e.stopPropagation()}
+            className={cn(
+              "max-w-full rounded-lg border border-glass-border bg-glass px-2 py-1.5 text-xs text-text-primary",
+              "outline-none focus:border-accent/50"
+            )}
+          >
+            {csvImportHints.map((h) => (
+              <option key={h.value} value={h.value}>
+                {h.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div
+          {...getRootProps()}
+          className={cn(
+            "cursor-pointer rounded-xl border-2 border-dashed border-glass-border p-8 text-center transition-colors",
+            isDragActive && "border-accent bg-accent/5"
           )}
-          <div>
-            <p className="text-sm font-medium text-text-secondary">
-              {isDragActive ? "Drop your CSV here" : "Import portfolio from CSV"}
-            </p>
-            <p className="mt-1 text-xs text-text-muted">Drag & drop or click to browse</p>
+        >
+          <input {...getInputProps()} />
+          <div className="flex flex-col items-center gap-3">
+            {isDragActive ? (
+              <Upload className="h-8 w-8 text-accent" />
+            ) : (
+              <FileSpreadsheet className="h-8 w-8 text-text-muted" />
+            )}
+            <div>
+              <p className="text-sm font-medium text-text-secondary">
+                {isDragActive ? "Drop your CSV here" : "Import portfolio from CSV"}
+              </p>
+              <p className="mt-1 text-xs text-text-muted">Drag & drop or click to browse</p>
+            </div>
           </div>
         </div>
-      </div>
+      </GlassCard>
 
       {/* Correlation Matrix */}
       {positions.length >= 2 && <CorrelationMatrix />}

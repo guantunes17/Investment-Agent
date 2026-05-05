@@ -4,7 +4,34 @@ import { useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { mapPortfolioResponse, parsePositionId } from "@/lib/portfolio-mapper";
-import type { Position, AssetType } from "@/stores/portfolio-store";
+import type { AssetType } from "@/stores/portfolio-store";
+
+/** Discriminated payload for add position (stocks/FII vs fixed income). */
+export type AddPositionPayload =
+  | {
+      assetType: "stock" | "fii";
+      ticker: string;
+      name: string;
+      quantity: number;
+      avgPrice: number;
+      reported_position_value?: number | null;
+    }
+  | {
+      assetType: "fixed-income";
+      name: string;
+      issuer: string;
+      asset_subtype: string;
+      invested_amount: number;
+      purchase_date: string;
+      maturity_date: string;
+      rate_type: string;
+      rate_value: number;
+      is_tax_exempt: boolean;
+      cdi_index_mode?: "FIXED" | "RANGE";
+      rate_ceiling_value?: number | null;
+      projection_cdi_percent?: number | null;
+      reported_position_value?: number | null;
+    };
 
 export function usePortfolio() {
   const query = useQuery({
@@ -41,44 +68,77 @@ export function useAddPosition() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (position: Omit<Position, "id">) => {
-      if (position.assetType === "fixed-income") {
-        const today = new Date().toISOString().split("T")[0];
-        const maturity =
-          position.maturityDate && position.maturityDate.length > 0
-            ? position.maturityDate
-            : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-        const invested = position.quantity * position.avgPrice;
+    mutationFn: async (payload: AddPositionPayload) => {
+      if (payload.assetType === "fixed-income") {
         return apiFetch("/portfolio/fixed-income", {
           method: "POST",
           body: JSON.stringify({
-            name: position.name,
-            issuer: position.name,
-            asset_subtype: "CDB",
-            invested_amount: invested,
-            purchase_date: today,
-            maturity_date: maturity,
-            rate_type: "PCT_CDI",
-            rate_value: 100,
-            is_tax_exempt: false,
+            name: payload.name,
+            issuer: payload.issuer,
+            asset_subtype: payload.asset_subtype,
+            invested_amount: payload.invested_amount,
+            purchase_date: payload.purchase_date,
+            maturity_date: payload.maturity_date,
+            rate_type: payload.rate_type,
+            rate_value: payload.rate_value,
+            is_tax_exempt: payload.is_tax_exempt,
+            cdi_index_mode: payload.cdi_index_mode ?? "FIXED",
+            rate_ceiling_value: payload.rate_ceiling_value ?? null,
+            projection_cdi_percent: payload.projection_cdi_percent ?? null,
+            reported_position_value: payload.reported_position_value ?? null,
           }),
         });
       }
-      const subtype = position.assetType === "fii" ? "FII" : "STOCK";
+      const subtype = payload.assetType === "fii" ? "FII" : "STOCK";
+      const stockBody: Record<string, unknown> = {
+        ticker: payload.ticker,
+        name: payload.name,
+        exchange: "B3",
+        asset_subtype: subtype,
+        quantity: payload.quantity,
+        avg_price: payload.avgPrice,
+      };
+      if (payload.reported_position_value != null) {
+        stockBody.reported_position_value = payload.reported_position_value;
+      }
       return apiFetch("/portfolio/stocks", {
         method: "POST",
-        body: JSON.stringify({
-          ticker: position.ticker,
-          name: position.name,
-          exchange: "B3",
-          asset_subtype: subtype,
-          quantity: position.quantity,
-          avg_price: position.avgPrice,
-        }),
+        body: JSON.stringify(stockBody),
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["portfolio"] });
+    },
+  });
+}
+
+export function useUpdatePosition() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: Record<string, unknown>;
+    }) => {
+      const parsed = parsePositionId(id);
+      if (!parsed) {
+        return Promise.reject(new Error("Invalid position id"));
+      }
+      const path =
+        parsed.kind === "stock"
+          ? `/portfolio/stocks/${parsed.numericId}`
+          : `/portfolio/fixed-income/${parsed.numericId}`;
+      return apiFetch(path, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["portfolio"] });
+      queryClient.invalidateQueries({ queryKey: ["asset"] });
     },
   });
 }

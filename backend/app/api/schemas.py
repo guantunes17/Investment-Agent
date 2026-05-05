@@ -14,6 +14,8 @@ class StockPositionCreate(BaseModel):
     asset_subtype: str = "STOCK"
     quantity: Decimal
     avg_price: Decimal
+    # Total R$ from broker — when set, P&L uses this instead of live quote × qty
+    reported_position_value: Optional[Decimal] = None
 
 
 class StockPositionUpdate(BaseModel):
@@ -23,6 +25,7 @@ class StockPositionUpdate(BaseModel):
     asset_subtype: Optional[str] = None
     quantity: Optional[Decimal] = None
     avg_price: Optional[Decimal] = None
+    reported_position_value: Optional[Decimal] = None
 
 
 class StockPositionResponse(BaseModel):
@@ -35,6 +38,7 @@ class StockPositionResponse(BaseModel):
     avg_price: Decimal
     created_at: datetime
     updated_at: datetime
+    reported_position_value: Optional[Decimal] = None
     current_price: Optional[float] = None
     total_value: Optional[float] = None
     profit_loss: Optional[float] = None
@@ -55,6 +59,12 @@ class FixedIncomeCreate(BaseModel):
     rate_type: str
     rate_value: Decimal
     is_tax_exempt: bool = False
+    # % of CDI: FIXED single multiplier, or RANGE (floor + ceiling e.g. 100–113)
+    cdi_index_mode: str = "FIXED"
+    rate_ceiling_value: Optional[Decimal] = None
+    projection_cdi_percent: Optional[Decimal] = None
+    # Balance from statement — not overwritten by nightly yield job
+    reported_position_value: Optional[Decimal] = None
 
 
 class FixedIncomeUpdate(BaseModel):
@@ -66,7 +76,11 @@ class FixedIncomeUpdate(BaseModel):
     maturity_date: Optional[date] = None
     rate_type: Optional[str] = None
     rate_value: Optional[Decimal] = None
+    rate_ceiling_value: Optional[Decimal] = None
+    cdi_index_mode: Optional[str] = None
+    projection_cdi_percent: Optional[Decimal] = None
     current_estimated_value: Optional[Decimal] = None
+    reported_position_value: Optional[Decimal] = None
     is_tax_exempt: Optional[bool] = None
 
 
@@ -80,7 +94,11 @@ class FixedIncomeResponse(BaseModel):
     maturity_date: date
     rate_type: str
     rate_value: Decimal
+    rate_ceiling_value: Optional[Decimal] = None
+    cdi_index_mode: str = "FIXED"
+    projection_cdi_percent: Optional[Decimal] = None
     current_estimated_value: Optional[Decimal] = None
+    reported_position_value: Optional[Decimal] = None
     is_tax_exempt: bool
     created_at: datetime
     updated_at: datetime

@@ -5,18 +5,27 @@ from datetime import date, timedelta
 from typing import Optional
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Body, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db
+from redis.asyncio import Redis
+
+from app.api.deps import get_db, get_redis
 from app.api.schemas import (
     StockPositionCreate, StockPositionUpdate, StockPositionResponse,
     FixedIncomeCreate, FixedIncomeUpdate, FixedIncomeResponse,
     PortfolioSummaryResponse, CSVImportResponse,
 )
+from app.models.fixed_income import FixedIncomePosition
+from app.models.stock_position import StockPosition
 from app.services.portfolio import PortfolioService
 from app.services.csv_import import CSVImportService
+from app.services.position_enrichment import (
+    build_yield_calculator,
+    enrich_fixed_income_response,
+    enrich_stock_response,
+)
 from app.data.providers.registry import DataProviderRegistry
 
 logger = logging.getLogger(__name__)
@@ -28,15 +37,35 @@ def _get_service(db: AsyncSession = Depends(get_db)) -> PortfolioService:
     return PortfolioService(db)
 
 
+async def _to_stock_response(stock: StockPosition, redis: Redis) -> StockPositionResponse:
+    registry = DataProviderRegistry()
+    data = await enrich_stock_response(stock, registry)
+    return StockPositionResponse(**data)
+
+
+async def _to_fixed_income_response(fi: FixedIncomePosition, redis: Redis) -> FixedIncomeResponse:
+    calculator = await build_yield_calculator(redis)
+    data = await enrich_fixed_income_response(fi, calculator)
+    return FixedIncomeResponse(**data)
+
+
 # --- All positions ---
 
 @router.get("/")
-async def list_positions(service: PortfolioService = Depends(_get_service)):
+async def list_positions(
+    service: PortfolioService = Depends(_get_service),
+    redis: Redis = Depends(get_redis),
+):
     stocks = await service.list_stocks()
     fixed_income = await service.list_fixed_income()
+    out_stocks = [await _to_stock_response(s, redis) for s in stocks]
+    calc = await build_yield_calculator(redis)
+    out_fi = [
+        FixedIncomeResponse(**await enrich_fixed_income_response(fi, calc)) for fi in fixed_income
+    ]
     return {
-        "stocks": [StockPositionResponse.model_validate(s) for s in stocks],
-        "fixed_income": [FixedIncomeResponse.model_validate(fi) for fi in fixed_income],
+        "stocks": out_stocks,
+        "fixed_income": out_fi,
         "total_positions": len(stocks) + len(fixed_income),
     }
 
@@ -44,18 +73,22 @@ async def list_positions(service: PortfolioService = Depends(_get_service)):
 # --- Stocks ---
 
 @router.get("/stocks", response_model=list[StockPositionResponse])
-async def list_stocks(service: PortfolioService = Depends(_get_service)):
+async def list_stocks(
+    service: PortfolioService = Depends(_get_service),
+    redis: Redis = Depends(get_redis),
+):
     stocks = await service.list_stocks()
-    return [StockPositionResponse.model_validate(s) for s in stocks]
+    return [await _to_stock_response(s, redis) for s in stocks]
 
 
 @router.post("/stocks", response_model=StockPositionResponse, status_code=201)
 async def create_stock(
     data: StockPositionCreate,
     service: PortfolioService = Depends(_get_service),
+    redis: Redis = Depends(get_redis),
 ):
     position = await service.create_stock(data.model_dump())
-    return StockPositionResponse.model_validate(position)
+    return await _to_stock_response(position, redis)
 
 
 @router.put("/stocks/{stock_id}", response_model=StockPositionResponse)
@@ -63,11 +96,12 @@ async def update_stock(
     stock_id: int,
     data: StockPositionUpdate,
     service: PortfolioService = Depends(_get_service),
+    redis: Redis = Depends(get_redis),
 ):
     position = await service.update_stock(stock_id, data.model_dump(exclude_unset=True))
     if not position:
         raise HTTPException(status_code=404, detail="Stock position not found")
-    return StockPositionResponse.model_validate(position)
+    return await _to_stock_response(position, redis)
 
 
 @router.delete("/stocks/{stock_id}", status_code=204)
@@ -83,18 +117,25 @@ async def delete_stock(
 # --- Fixed Income ---
 
 @router.get("/fixed-income", response_model=list[FixedIncomeResponse])
-async def list_fixed_income(service: PortfolioService = Depends(_get_service)):
+async def list_fixed_income(
+    service: PortfolioService = Depends(_get_service),
+    redis: Redis = Depends(get_redis),
+):
     positions = await service.list_fixed_income()
-    return [FixedIncomeResponse.model_validate(fi) for fi in positions]
+    calc = await build_yield_calculator(redis)
+    return [
+        FixedIncomeResponse(**await enrich_fixed_income_response(fi, calc)) for fi in positions
+    ]
 
 
 @router.post("/fixed-income", response_model=FixedIncomeResponse, status_code=201)
 async def create_fixed_income(
     data: FixedIncomeCreate,
     service: PortfolioService = Depends(_get_service),
+    redis: Redis = Depends(get_redis),
 ):
     position = await service.create_fixed_income(data.model_dump())
-    return FixedIncomeResponse.model_validate(position)
+    return await _to_fixed_income_response(position, redis)
 
 
 @router.put("/fixed-income/{fi_id}", response_model=FixedIncomeResponse)
@@ -102,11 +143,12 @@ async def update_fixed_income(
     fi_id: int,
     data: FixedIncomeUpdate,
     service: PortfolioService = Depends(_get_service),
+    redis: Redis = Depends(get_redis),
 ):
     position = await service.update_fixed_income(fi_id, data.model_dump(exclude_unset=True))
     if not position:
         raise HTTPException(status_code=404, detail="Fixed income position not found")
-    return FixedIncomeResponse.model_validate(position)
+    return await _to_fixed_income_response(position, redis)
 
 
 @router.delete("/fixed-income/{fi_id}", status_code=204)
@@ -133,11 +175,17 @@ async def get_summary(service: PortfolioService = Depends(_get_service)):
 @router.post("/import-csv", response_model=CSVImportResponse)
 async def import_csv(
     file: UploadFile = File(...),
+    asset_type_hint: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
     content = await file.read()
     csv_service = CSVImportService(db)
-    result = await csv_service.import_csv(content)
+    hint = (asset_type_hint or "").strip() or None
+    if hint == "fixed-income":
+        hint = "fixed_income"
+    elif hint == "stock" or hint == "fii":
+        hint = "stock"
+    result = await csv_service.import_csv(content, asset_type=hint)
     return CSVImportResponse(**result)
 
 
@@ -145,23 +193,26 @@ async def import_csv(
 
 _TEMPLATES: dict[str, tuple[list[str], list[str]]] = {
     "stock": (
-        ["ticker", "name", "exchange", "asset_subtype", "quantity", "avg_price"],
-        ["PETR4", "Petrobras PN", "B3", "STOCK", "100", "28.50"],
+        ["ticker", "name", "exchange", "asset_subtype", "quantity", "avg_price", "reported_position_value"],
+        ["PETR4", "Petrobras PN", "B3", "STOCK", "100", "28.50", ""],
     ),
     "fixed-income": (
         [
             "name", "issuer", "asset_subtype", "invested_amount",
             "purchase_date", "maturity_date", "rate_type", "rate_value",
             "is_tax_exempt",
+            "cdi_index_mode", "rate_ceiling_value", "projection_cdi_percent",
+            "reported_position_value",
         ],
         [
             "CDB Banco X 120% CDI", "Banco X", "CDB", "10000.00",
             "2025-01-15", "2027-01-15", "PCT_CDI", "120", "false",
+            "FIXED", "", "", "",
         ],
     ),
     "fii": (
-        ["ticker", "name", "exchange", "asset_subtype", "quantity", "avg_price"],
-        ["HGLG11", "CSHG Logística FII", "B3", "FII", "50", "162.30"],
+        ["ticker", "name", "exchange", "asset_subtype", "quantity", "avg_price", "reported_position_value"],
+        ["HGLG11", "CSHG Logística FII", "B3", "FII", "50", "162.30", ""],
     ),
 }
 
@@ -195,9 +246,20 @@ async def export_csv(
 ):
     if asset_type == "stocks":
         positions = await service.list_stocks()
-        headers = ["ticker", "name", "exchange", "asset_subtype", "quantity", "avg_price"]
+        headers = [
+            "ticker", "name", "exchange", "asset_subtype", "quantity", "avg_price",
+            "reported_position_value",
+        ]
         rows = [
-            [p.ticker, p.name, p.exchange, p.asset_subtype, str(p.quantity), str(p.avg_price)]
+            [
+                p.ticker,
+                p.name,
+                p.exchange,
+                getattr(p.asset_subtype, "value", str(p.asset_subtype)),
+                str(p.quantity),
+                str(p.avg_price),
+                str(p.reported_position_value) if p.reported_position_value is not None else "",
+            ]
             for p in positions
         ]
     elif asset_type == "fixed-income":
@@ -206,21 +268,44 @@ async def export_csv(
             "name", "issuer", "asset_subtype", "invested_amount",
             "purchase_date", "maturity_date", "rate_type", "rate_value",
             "is_tax_exempt",
+            "cdi_index_mode", "rate_ceiling_value", "projection_cdi_percent",
+            "reported_position_value",
         ]
         rows = [
             [
-                p.name, p.issuer, p.asset_subtype, str(p.invested_amount),
-                str(p.purchase_date), str(p.maturity_date), p.rate_type,
-                str(p.rate_value), str(p.is_tax_exempt).lower(),
+                p.name,
+                p.issuer,
+                getattr(p.asset_subtype, "value", str(p.asset_subtype)),
+                str(p.invested_amount),
+                str(p.purchase_date),
+                str(p.maturity_date),
+                getattr(p.rate_type, "value", str(p.rate_type)),
+                str(p.rate_value),
+                str(p.is_tax_exempt).lower(),
+                getattr(p.cdi_index_mode, "value", str(p.cdi_index_mode)),
+                str(p.rate_ceiling_value) if p.rate_ceiling_value is not None else "",
+                str(p.projection_cdi_percent) if p.projection_cdi_percent is not None else "",
+                str(p.reported_position_value) if p.reported_position_value is not None else "",
             ]
             for p in positions
         ]
     elif asset_type == "fiis":
         positions = await service.list_stocks()
         fii_only = [p for p in positions if str(getattr(p, "asset_subtype", "")).upper() == "FII"]
-        headers = ["ticker", "name", "exchange", "asset_subtype", "quantity", "avg_price"]
+        headers = [
+            "ticker", "name", "exchange", "asset_subtype", "quantity", "avg_price",
+            "reported_position_value",
+        ]
         rows = [
-            [p.ticker, p.name, p.exchange, p.asset_subtype, str(p.quantity), str(p.avg_price)]
+            [
+                p.ticker,
+                p.name,
+                p.exchange,
+                getattr(p.asset_subtype, "value", str(p.asset_subtype)),
+                str(p.quantity),
+                str(p.avg_price),
+                str(p.reported_position_value) if p.reported_position_value is not None else "",
+            ]
             for p in fii_only
         ]
     else:

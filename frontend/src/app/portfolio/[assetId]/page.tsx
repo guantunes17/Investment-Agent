@@ -7,7 +7,8 @@ import { Gauge } from "@/components/ui/gauge";
 import { Button } from "@/components/ui/button";
 import { LoadingCard } from "@/components/ui/loading";
 import { CandlestickChart, type OHLCVData } from "@/components/charts/candlestick-chart";
-import { useAssetDetail } from "@/hooks/use-portfolio";
+import { useAssetDetail, usePortfolio } from "@/hooks/use-portfolio";
+import { PositionAlignmentForm } from "@/app/portfolio/position-alignment-form";
 import { formatCurrency, formatPercent, cn } from "@/lib/utils";
 import { ArrowLeft, TrendingUp, Calendar, Percent, DollarSign } from "lucide-react";
 import Link from "next/link";
@@ -33,7 +34,8 @@ export default function AssetDetailPage({
   params: Promise<{ assetId: string }>;
 }) {
   const { assetId } = use(params);
-  const { data: asset, isLoading } = useAssetDetail(assetId);
+  const { data: asset, isLoading, refetch } = useAssetDetail(assetId);
+  const { refetch: refetchPortfolio } = usePortfolio();
 
   if (isLoading) {
     return (
@@ -144,6 +146,16 @@ export default function AssetDetailPage({
           </div>
         </GlassCard>
       )}
+
+      <GlassCard>
+        <PositionAlignmentForm
+          position={asset}
+          onSaved={() => {
+            void refetch();
+            void refetchPortfolio();
+          }}
+        />
+      </GlassCard>
 
       {/* Metrics grid */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">

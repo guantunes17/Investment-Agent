@@ -1,5 +1,6 @@
 import enum
 from decimal import Decimal
+from typing import Optional
 
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -22,3 +23,5 @@ class StockPosition(TimestampMixin, Base):
     asset_subtype: Mapped[AssetSubtype] = mapped_column(String(10))
     quantity: Mapped[Decimal] = mapped_column()
     avg_price: Mapped[Decimal] = mapped_column()
+    # Total position value from broker statement (overrides live quote for P&L when set)
+    reported_position_value: Mapped[Optional[Decimal]] = mapped_column(nullable=True, default=None)

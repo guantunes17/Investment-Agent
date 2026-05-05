@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
-from app.models.fixed_income import FixedIncomePosition, RateType
+from app.models.fixed_income import CDIIndexMode, FixedIncomePosition, RateType
 from app.yield_engine.rates import RateService
 
 IOF_TABLE = [
@@ -22,6 +22,22 @@ class YieldCalculator:
     def __init__(self, rate_service: RateService):
         self._rate_service = rate_service
 
+    def _pct_cdi_multiplier(self, position: FixedIncomePosition) -> float:
+        """Effective % of CDI used in formulas — supports fixed, range (midpoint), or user projection."""
+        if position.rate_type != RateType.PCT_CDI:
+            return float(position.rate_value)
+        if position.projection_cdi_percent is not None:
+            return float(position.projection_cdi_percent)
+        mode = position.cdi_index_mode
+        if (
+            mode == CDIIndexMode.RANGE
+            and position.rate_ceiling_value is not None
+        ):
+            lo = float(position.rate_value)
+            hi = float(position.rate_ceiling_value)
+            return (lo + hi) / 2.0
+        return float(position.rate_value)
+
     async def calculate_current_value(self, position: FixedIncomePosition) -> Decimal:
         today = date.today()
         days_held = (today - position.purchase_date).days
@@ -30,13 +46,14 @@ class YieldCalculator:
 
         invested = float(position.invested_amount)
         rate_value = float(position.rate_value)
+        pct_cdi_mult = self._pct_cdi_multiplier(position)
 
         if position.rate_type == RateType.PRE:
             daily_rate = (1 + rate_value / 100) ** (1 / 252) - 1
             current_value = invested * (1 + daily_rate) ** min(days_held, self._business_days(position.purchase_date, today))
         elif position.rate_type == RateType.PCT_CDI:
             cdi_daily = await self._rate_service.get_latest_cdi()
-            effective_daily = (cdi_daily / 100) * (rate_value / 100)
+            effective_daily = (cdi_daily / 100) * (pct_cdi_mult / 100)
             business_days = self._business_days(position.purchase_date, today)
             current_value = invested * (1 + effective_daily) ** business_days
         elif position.rate_type == RateType.CDI_PLUS:
@@ -73,6 +90,7 @@ class YieldCalculator:
 
         invested = float(position.invested_amount)
         rate_value = float(position.rate_value)
+        pct_cdi_mult = self._pct_cdi_multiplier(position)
 
         if position.rate_type == RateType.PRE:
             business_days = self._business_days(position.purchase_date, position.maturity_date)
@@ -80,7 +98,7 @@ class YieldCalculator:
             final_value = invested * (1 + daily_rate) ** business_days
         elif position.rate_type == RateType.PCT_CDI:
             cdi_daily = await self._rate_service.get_latest_cdi()
-            effective_daily = (cdi_daily / 100) * (rate_value / 100)
+            effective_daily = (cdi_daily / 100) * (pct_cdi_mult / 100)
             business_days = self._business_days(position.purchase_date, position.maturity_date)
             final_value = invested * (1 + effective_daily) ** business_days
         elif position.rate_type == RateType.CDI_PLUS:

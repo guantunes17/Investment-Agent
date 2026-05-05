@@ -5,7 +5,12 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.stock_position import StockPosition
-from app.models.fixed_income import FixedIncomePosition
+from app.models.fixed_income import (
+    CDIIndexMode,
+    FixedIncomePosition,
+    FixedIncomeSubtype,
+    RateType,
+)
 from app.data.providers.registry import DataProviderRegistry
 from app.yield_engine.calculator import YieldCalculator
 
@@ -42,8 +47,7 @@ class PortfolioService:
         if not position:
             return None
         for key, value in data.items():
-            if value is not None:
-                setattr(position, key, value)
+            setattr(position, key, value)
         await self._db.commit()
         await self._db.refresh(position)
         return position
@@ -66,7 +70,11 @@ class PortfolioService:
         return await self._db.get(FixedIncomePosition, fi_id)
 
     async def create_fixed_income(self, data: dict) -> FixedIncomePosition:
-        position = FixedIncomePosition(**data)
+        payload = dict(data)
+        payload["rate_type"] = RateType(str(payload["rate_type"]))
+        payload["asset_subtype"] = FixedIncomeSubtype(str(payload["asset_subtype"]))
+        payload["cdi_index_mode"] = CDIIndexMode(str(payload.get("cdi_index_mode", "FIXED")))
+        position = FixedIncomePosition(**payload)
         self._db.add(position)
         await self._db.commit()
         await self._db.refresh(position)
@@ -77,8 +85,13 @@ class PortfolioService:
         if not position:
             return None
         for key, value in data.items():
-            if value is not None:
-                setattr(position, key, value)
+            if key == "rate_type" and value is not None:
+                value = RateType(str(value))
+            elif key == "asset_subtype" and value is not None:
+                value = FixedIncomeSubtype(str(value))
+            elif key == "cdi_index_mode" and value is not None:
+                value = CDIIndexMode(str(value))
+            setattr(position, key, value)
         await self._db.commit()
         await self._db.refresh(position)
         return position
@@ -100,20 +113,29 @@ class PortfolioService:
         stock_total_invested = sum(
             float(s.quantity * s.avg_price) for s in stocks
         )
-        stock_total_value = stock_total_invested
-
-        try:
-            for s in stocks:
+        stock_total_value = 0.0
+        for s in stocks:
+            qty = float(s.quantity)
+            px = float(s.avg_price)
+            try:
                 quote = await self._registry.get_quote("stock", s.ticker)
-                price = quote.get("price", float(s.avg_price))
-                stock_total_value += float(s.quantity) * price - float(s.quantity * s.avg_price)
-        except Exception:
-            stock_total_value = stock_total_invested
+                px = float(quote.get("price", px))
+            except Exception:
+                pass
+            market = qty * px
+            eff = float(s.reported_position_value) if s.reported_position_value is not None else market
+            stock_total_value += eff
 
         fi_total_invested = sum(float(fi.invested_amount) for fi in fixed_income)
-        fi_total_value = sum(
-            float(fi.current_estimated_value or fi.invested_amount) for fi in fixed_income
-        )
+        fi_total_value = 0.0
+        for fi in fixed_income:
+            base = float(fi.current_estimated_value or fi.invested_amount)
+            eff = (
+                float(fi.reported_position_value)
+                if fi.reported_position_value is not None
+                else base
+            )
+            fi_total_value += eff
 
         total_invested = stock_total_invested + fi_total_invested
         total_value = stock_total_value + fi_total_value
