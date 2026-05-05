@@ -83,7 +83,8 @@ class YieldCalculator:
         return Decimal(str(round(current_value, 2)))
 
     async def project_to_maturity(self, position: FixedIncomePosition) -> Decimal:
-        today = date.today()
+        if position.maturity_date is None:
+            return await self.calculate_current_value(position)
         total_days = (position.maturity_date - position.purchase_date).days
         if total_days <= 0:
             return position.invested_amount

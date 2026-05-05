@@ -40,7 +40,10 @@ async def get_fixed_income_summary() -> dict:
         current_value = await calculator.calculate_current_value(pos)
         gross_profit = current_value - pos.invested_amount
         tax_info = calculator.calculate_tax(pos, gross_profit)
-        days_to_maturity = (pos.maturity_date - date.today()).days
+        days_to_maturity = (
+            None if pos.maturity_date is None
+            else (pos.maturity_date - date.today()).days
+        )
 
         total_invested += pos.invested_amount
         total_current += current_value
@@ -97,7 +100,10 @@ async def compare_yields(position_ids: list[int]) -> dict:
             "gross_profit": float(gross_profit),
             "net_profit": float(tax_info["net_profit"]),
             "is_tax_exempt": pos.is_tax_exempt,
-            "days_to_maturity": (pos.maturity_date - date.today()).days,
+            "days_to_maturity": (
+                None if pos.maturity_date is None
+                else (pos.maturity_date - date.today()).days
+            ),
         })
 
     comparisons.sort(key=lambda x: x["effective_annual_rate"], reverse=True)
@@ -109,7 +115,8 @@ async def check_maturities(days_ahead: int = 30) -> dict:
         cutoff = date.today() + timedelta(days=days_ahead)
         result = await db.execute(
             select(FixedIncomePosition).where(
-                FixedIncomePosition.maturity_date <= cutoff
+                FixedIncomePosition.maturity_date.is_not(None),
+                FixedIncomePosition.maturity_date <= cutoff,
             )
         )
         positions = result.scalars().all()

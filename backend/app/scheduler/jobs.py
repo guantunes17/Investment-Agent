@@ -79,6 +79,7 @@ async def check_maturity_alerts():
                 cutoff = today + timedelta(days=days)
                 result = await db.execute(
                     select(FixedIncomePosition).where(
+                        FixedIncomePosition.maturity_date.is_not(None),
                         FixedIncomePosition.maturity_date <= cutoff,
                         FixedIncomePosition.maturity_date > today,
                     )

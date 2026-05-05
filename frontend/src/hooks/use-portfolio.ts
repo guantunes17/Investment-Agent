@@ -23,7 +23,7 @@ export type AddPositionPayload =
       asset_subtype: string;
       invested_amount: number;
       purchase_date: string;
-      maturity_date: string;
+      maturity_date: string | null;
       rate_type: string;
       rate_value: number;
       is_tax_exempt: boolean;
@@ -161,6 +161,7 @@ export function useDeletePosition() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["portfolio"] });
+      queryClient.invalidateQueries({ queryKey: ["asset"] });
     },
   });
 }

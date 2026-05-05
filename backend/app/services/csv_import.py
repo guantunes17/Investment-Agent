@@ -114,7 +114,7 @@ class CSVImportService:
             invested_amount = Decimal(row.get("invested_amount", "0").replace(",", "."))
 
         purchase_date = self._parse_date(row.get("purchase_date", ""))
-        maturity_date = self._parse_date(row.get("maturity_date", ""))
+        maturity_date = self._parse_optional_date(row.get("maturity_date", ""))
 
         explicit_subtype = (row.get("asset_subtype") or "").strip().upper()
         subtype = infer_asset_subtype(name, explicit_subtype)
@@ -203,6 +203,11 @@ class CSVImportService:
         if raw:
             return parse_brazilian_rate(raw)
         return parse_brazilian_rate("")
+
+    def _parse_optional_date(self, value: str) -> Optional[date]:
+        if value is None or not str(value).strip():
+            return None
+        return self._parse_date(str(value).strip())
 
     def _parse_date(self, value: str) -> date:
         if not value:

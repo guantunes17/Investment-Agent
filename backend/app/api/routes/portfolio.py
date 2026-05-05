@@ -278,7 +278,7 @@ async def export_csv(
                 getattr(p.asset_subtype, "value", str(p.asset_subtype)),
                 str(p.invested_amount),
                 str(p.purchase_date),
-                str(p.maturity_date),
+                str(p.maturity_date) if p.maturity_date is not None else "",
                 getattr(p.rate_type, "value", str(p.rate_type)),
                 str(p.rate_value),
                 str(p.is_tax_exempt).lower(),

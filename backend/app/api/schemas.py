@@ -55,7 +55,7 @@ class FixedIncomeCreate(BaseModel):
     asset_subtype: str
     invested_amount: Decimal
     purchase_date: date
-    maturity_date: date
+    maturity_date: Optional[date] = None
     rate_type: str
     rate_value: Decimal
     is_tax_exempt: bool = False
@@ -91,7 +91,7 @@ class FixedIncomeResponse(BaseModel):
     asset_subtype: str
     invested_amount: Decimal
     purchase_date: date
-    maturity_date: date
+    maturity_date: Optional[date] = None
     rate_type: str
     rate_value: Decimal
     rate_ceiling_value: Optional[Decimal] = None

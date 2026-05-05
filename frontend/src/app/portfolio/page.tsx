@@ -15,9 +15,11 @@ import { LoadingCard } from "@/components/ui/loading";
 import { usePortfolio } from "@/hooks/use-portfolio";
 import type { Position } from "@/stores/portfolio-store";
 import { formatCurrency, formatPercent, cn } from "@/lib/utils";
-import { Plus, Upload, FileSpreadsheet, Download } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Plus, Upload, FileSpreadsheet, Download, Pencil, Trash2 } from "lucide-react";
 import { AddPositionForm } from "./add-position-form";
 import { toast } from "sonner";
+import { useDeletePosition } from "@/hooks/use-portfolio";
 
 const tabs = [
   { id: "all", label: "All" },
@@ -135,34 +137,40 @@ export default function PortfolioPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold text-text-primary">Portfolio</h1>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Button variant="ghost" size="sm" onClick={() => setShowTemplates(!showTemplates)}>
-              <Download className="h-4 w-4" />
-              Templates
+      <div className="space-y-2">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <h1 className="text-2xl font-bold text-text-primary">Portfolio</h1>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Button variant="ghost" size="sm" onClick={() => setShowTemplates(!showTemplates)}>
+                <Download className="h-4 w-4" />
+                Templates
+              </Button>
+              {showTemplates && (
+                <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-xl border border-glass-border bg-glass p-1 backdrop-blur-xl shadow-lg">
+                  {templateOptions.map((opt) => (
+                    <button
+                      key={opt.type}
+                      onClick={() => handleDownloadTemplate(opt.type)}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-text-secondary transition-colors hover:bg-glass-hover hover:text-text-primary"
+                    >
+                      <FileSpreadsheet className="h-3.5 w-3.5" />
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <Button variant="primary" onClick={() => setShowAddModal(true)}>
+              <Plus className="h-4 w-4" />
+              Add Position
             </Button>
-            {showTemplates && (
-              <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-xl border border-glass-border bg-glass p-1 backdrop-blur-xl shadow-lg">
-                {templateOptions.map((opt) => (
-                  <button
-                    key={opt.type}
-                    onClick={() => handleDownloadTemplate(opt.type)}
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-text-secondary transition-colors hover:bg-glass-hover hover:text-text-primary"
-                  >
-                    <FileSpreadsheet className="h-3.5 w-3.5" />
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
-          <Button variant="primary" onClick={() => setShowAddModal(true)}>
-            <Plus className="h-4 w-4" />
-            Add Position
-          </Button>
         </div>
+        <p className="max-w-2xl text-xs text-text-muted">
+          Use <strong className="text-text-secondary">Edit</strong> to change balances and rates;{" "}
+          <strong className="text-text-secondary">Remove</strong> drops the line from this app only (not your broker).
+        </p>
       </div>
 
       {/* Allocation chart for 'all' tab */}
@@ -240,7 +248,12 @@ export default function PortfolioPage() {
       {positions.length >= 2 && <CorrelationMatrix />}
 
       {/* Add Position Modal */}
-      <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="Add Position">
+      <Modal
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        title="Add Position"
+        className="max-w-2xl"
+      >
         <AddPositionForm onClose={() => setShowAddModal(false)} />
       </Modal>
     </div>
@@ -268,6 +281,9 @@ function PositionsTable({
             <th className="px-4 py-3 text-right font-medium">P&L%</th>
             <th className="px-4 py-3 text-right font-medium">Trend</th>
             <th className="px-4 py-3 text-right font-medium">Signal</th>
+            <th className="min-w-[140px] px-4 py-3 text-right font-medium" title="Edit or remove this holding">
+              Manage
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -312,6 +328,9 @@ function PositionsTable({
                   <Badge recommendation={pos.recommendation as RecommendationType} />
                 )}
               </td>
+              <td className="px-4 py-3 text-right">
+                <PositionRowActions position={pos} />
+              </td>
             </tr>
           ))}
         </tbody>
@@ -328,22 +347,25 @@ function FixedIncomeGrid({
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
       {positions.map((pos) => {
-        const daysToMaturity = pos.maturityDate
-          ? Math.ceil(
-              (new Date(pos.maturityDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-            )
-          : null;
+        const daysToMaturity =
+          pos.maturityDate && pos.maturityDate.length > 0
+            ? Math.ceil(
+                (new Date(pos.maturityDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+              )
+            : null;
         return (
           <GlassCard key={pos.id} hover>
-            <div className="flex items-start justify-between">
-              <div>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
                 <span className="rounded-md bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
                   {pos.name}
                 </span>
                 <p className="mt-2 text-xs text-text-muted">{pos.rate}</p>
               </div>
               {pos.recommendation && (
-                <Badge recommendation={pos.recommendation as RecommendationType} />
+                <div className="shrink-0">
+                  <Badge recommendation={pos.recommendation as RecommendationType} />
+                </div>
               )}
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
@@ -367,17 +389,140 @@ function FixedIncomeGrid({
               </div>
               <div>
                 <p className="text-text-muted">Maturity</p>
-                <p className={cn("font-semibold", daysToMaturity && daysToMaturity <= 30 ? "text-loss" : "text-text-primary")}>
-                  {daysToMaturity != null ? `${daysToMaturity}d` : "—"}
+                <p
+                  className={cn(
+                    "font-semibold",
+                    daysToMaturity != null && daysToMaturity <= 30 ? "text-loss" : "text-text-primary"
+                  )}
+                >
+                  {!pos.maturityDate
+                    ? "Open-ended"
+                    : daysToMaturity != null
+                      ? `${daysToMaturity}d`
+                      : "—"}
                 </p>
               </div>
             </div>
             {pos.taxStatus && (
               <p className="mt-3 text-[10px] text-text-muted">Tax: {pos.taxStatus}</p>
             )}
+            <PositionCardActions position={pos} />
           </GlassCard>
         );
       })}
+    </div>
+  );
+}
+
+function PositionRowActions({ position }: { position: Position }) {
+  return (
+    <PositionActionsInner position={position} layout="table" />
+  );
+}
+
+function PositionCardActions({ position }: { position: Position }) {
+  return (
+    <PositionActionsInner position={position} layout="card" />
+  );
+}
+
+function PositionActionsInner({
+  position,
+  layout,
+}: {
+  position: Position;
+  layout: "table" | "card";
+}) {
+  const router = useRouter();
+  const deletePosition = useDeletePosition();
+  const label =
+    position.assetType === "fixed-income"
+      ? position.name.slice(0, 48)
+      : position.ticker;
+
+  const editHint =
+    position.assetType === "fixed-income"
+      ? "Edit balances, % CDI range, and tax-related overrides"
+      : "Edit statement value and how this position is tracked";
+
+  const onRemove = () => {
+    if (
+      !confirm(
+        `Remove "${label}" from this portfolio?\n\nThis only removes it in the app — it does not sell at your broker.`
+      )
+    )
+      return;
+    deletePosition.mutate(position.id, {
+      onSuccess: () => toast.success("Position removed from portfolio"),
+      onError: (e: Error) =>
+        toast.error("Could not remove position", { description: e.message }),
+    });
+  };
+
+  const goEdit = () => {
+    router.push(`/portfolio/${encodeURIComponent(position.id)}`);
+  };
+
+  if (layout === "card") {
+    return (
+      <div className="mt-4 flex flex-col gap-2 border-t border-glass-border pt-4">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-text-muted">Position</p>
+        <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            type="button"
+            className="flex-1"
+            title={editHint}
+            onClick={goEdit}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Edit position
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            type="button"
+            className="flex-1"
+            title="Remove from this app only"
+            disabled={deletePosition.isPending}
+            onClick={onRemove}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Remove
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex flex-wrap items-center justify-end gap-2"
+      role="group"
+      aria-label={`Manage ${label}`}
+    >
+      <Button
+        variant="ghost"
+        size="sm"
+        type="button"
+        title={editHint}
+        onClick={goEdit}
+      >
+        <Pencil className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        Edit
+      </Button>
+      <Button
+        variant="danger"
+        size="sm"
+        type="button"
+        title="Remove from this app only — does not sell at broker"
+        disabled={deletePosition.isPending}
+        onClick={onRemove}
+      >
+        <Trash2 className="h-3.5 w-3.5 shrink-0" />
+        <span>Remove</span>
+      </Button>
     </div>
   );
 }

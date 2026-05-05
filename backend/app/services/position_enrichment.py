@@ -75,7 +75,10 @@ async def enrich_fixed_income_response(
     net_profit = tax_info["net_profit"]
     net_f = float(net_profit)
 
-    days_left = (fi.maturity_date - date.today()).days
+    if fi.maturity_date is not None:
+        days_left: int | None = (fi.maturity_date - date.today()).days
+    else:
+        days_left = None
 
     return {
         "id": fi.id,

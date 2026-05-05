@@ -71,6 +71,7 @@ export function AddPositionForm({ onClose }: AddPositionFormProps) {
     () => new Date().toISOString().split("T")[0]
   );
   const [maturityDate, setMaturityDate] = useState("");
+  const [noFixedMaturity, setNoFixedMaturity] = useState(false);
   const [rateType, setRateType] = useState("PCT_CDI");
   const [rateValue, setRateValue] = useState("100");
   const [cdiIndexMode, setCdiIndexMode] = useState<"FIXED" | "RANGE">("FIXED");
@@ -103,8 +104,8 @@ export function AddPositionForm({ onClose }: AddPositionFormProps) {
         toast.error("Enter a valid invested amount (principal)");
         return;
       }
-      if (!maturityDate) {
-        toast.error("Enter the maturity date");
+      if (!noFixedMaturity && !maturityDate) {
+        toast.error("Enter the maturity date, or check “No fixed maturity” for daily liquidity / open term");
         return;
       }
       if (!Number.isFinite(rateNum)) {
@@ -156,7 +157,7 @@ export function AddPositionForm({ onClose }: AddPositionFormProps) {
         asset_subtype: fiSubtype,
         invested_amount: inv,
         purchase_date: purchaseDate,
-        maturity_date: maturityDate,
+        maturity_date: noFixedMaturity ? null : maturityDate,
         rate_type: rateType,
         rate_value: rateNum,
         is_tax_exempt: autoTax,
@@ -228,21 +229,37 @@ export function AddPositionForm({ onClose }: AddPositionFormProps) {
             </select>
           </div>
 
-          <Input
-            label="Product name"
-            placeholder="e.g. CDB BTG DI xx CDI + spread"
-            value={fiName}
-            onChange={(e) => setFiName(e.target.value)}
-            required
-          />
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-text-secondary">Product name</label>
+            <textarea
+              name="fi-product-name"
+              rows={3}
+              className={cn(
+                "min-h-[4.5rem] w-full resize-y rounded-xl border border-glass-border bg-glass px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted backdrop-blur-md",
+                "outline-none transition-all focus:border-accent/50 focus:ring-2 focus:ring-accent/20"
+              )}
+              placeholder="Full name as shown by your bank (wraps to multiple lines)"
+              value={fiName}
+              onChange={(e) => setFiName(e.target.value)}
+              required
+            />
+          </div>
 
-          <Input
-            label="Issuer (institution)"
-            placeholder="e.g. BTG Pactual, Itaú Unibanco, Banco do Brasil"
-            value={issuer}
-            onChange={(e) => setIssuer(e.target.value)}
-            required
-          />
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-text-secondary">Issuer (institution)</label>
+            <textarea
+              name="fi-issuer"
+              rows={2}
+              className={cn(
+                "min-h-[3rem] w-full resize-y rounded-xl border border-glass-border bg-glass px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted backdrop-blur-md",
+                "outline-none transition-all focus:border-accent/50 focus:ring-2 focus:ring-accent/20"
+              )}
+              placeholder="e.g. BTG Pactual, Itaú Unibanco, Banco do Brasil"
+              value={issuer}
+              onChange={(e) => setIssuer(e.target.value)}
+              required
+            />
+          </div>
 
           <Input
             label="Invested amount (R$)"
@@ -254,7 +271,27 @@ export function AddPositionForm({ onClose }: AddPositionFormProps) {
             required
           />
 
-          <div className="grid grid-cols-2 gap-3">
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-glass-border bg-white/[0.03] px-3 py-3">
+            <input
+              type="checkbox"
+              checked={noFixedMaturity}
+              onChange={(e) => {
+                const v = e.target.checked;
+                setNoFixedMaturity(v);
+                if (v) setMaturityDate("");
+              }}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-accent"
+            />
+            <span className="text-sm leading-snug">
+              <span className="font-medium text-text-secondary">No fixed maturity date</span>
+              <span className="mt-0.5 block text-[11px] text-text-muted">
+                Use for daily liquidity CDBs or products without a contract end date. Maturity alerts and “run to
+                maturity” projections are skipped; yield still accrues from the purchase date.
+              </span>
+            </span>
+          </label>
+
+          <div className={cn("grid gap-3", noFixedMaturity ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2")}>
             <Input
               label="Purchase / application date"
               type="date"
@@ -262,13 +299,15 @@ export function AddPositionForm({ onClose }: AddPositionFormProps) {
               onChange={(e) => setPurchaseDate(e.target.value)}
               required
             />
-            <Input
-              label="Maturity date"
-              type="date"
-              value={maturityDate}
-              onChange={(e) => setMaturityDate(e.target.value)}
-              required
-            />
+            {!noFixedMaturity && (
+              <Input
+                label="Maturity date"
+                type="date"
+                value={maturityDate}
+                onChange={(e) => setMaturityDate(e.target.value)}
+                required
+              />
+            )}
           </div>
 
           <div className="space-y-2">
@@ -420,7 +459,7 @@ export function AddPositionForm({ onClose }: AddPositionFormProps) {
         </>
       )}
 
-      <div className="flex justify-end gap-3 pt-2">
+      <div className="sticky bottom-0 z-[1] flex justify-end gap-3 border-t border-glass-border/60 bg-bg-primary/95 py-3 pt-4 backdrop-blur-sm">
         <Button type="button" variant="ghost" onClick={onClose}>
           Cancel
         </Button>

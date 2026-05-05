@@ -14,6 +14,8 @@ class ProjectionService:
         position: FixedIncomePosition,
         interval_days: int = 30,
     ) -> list[dict]:
+        if position.maturity_date is None:
+            return []
         today = date.today()
         total_days = (position.maturity_date - position.purchase_date).days
         if total_days <= 0:

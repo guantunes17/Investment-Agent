@@ -82,6 +82,9 @@ export default function AssetDetailPage({
             )}
           </div>
           <p className="text-sm text-text-muted">{asset.name}</p>
+          <p className="mt-1 text-xs text-text-muted">
+            Edit using the sections below — each block has its own save action.
+          </p>
         </div>
         <div className="ml-auto text-right">
           <p className="text-2xl font-bold text-text-primary">
@@ -204,7 +207,7 @@ export default function AssetDetailPage({
             <MetricCard
               icon={<Calendar className="h-4 w-4 text-hold" />}
               label="Maturity"
-              value={asset.maturityDate || "—"}
+              value={asset.maturityDate ? asset.maturityDate : "Open-ended (no fixed date)"}
             />
             <MetricCard
               icon={<TrendingUp className="h-4 w-4 text-secondary" />}

@@ -9,6 +9,7 @@ interface ModalProps {
   onClose: () => void;
   title?: string;
   children: React.ReactNode;
+  /** Outer shell (width, max-height cap) */
   className?: string;
 }
 
@@ -29,26 +30,31 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={title ? "modal-title" : undefined}
             className={cn(
-              "relative z-10 w-full max-w-lg rounded-2xl border border-glass-border bg-bg-primary/90 p-6 backdrop-blur-xl",
+              "relative z-10 flex max-h-[min(92vh,860px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-glass-border bg-bg-primary/95 backdrop-blur-xl",
               "shadow-[0_20px_60px_rgba(0,0,0,0.5)]",
               className
             )}
           >
             {title && (
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-text-primary">
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-glass-border/60 px-5 py-4">
+                <h2 id="modal-title" className="text-lg font-semibold text-text-primary">
                   {title}
                 </h2>
                 <button
+                  type="button"
                   onClick={onClose}
                   className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-glass-hover hover:text-text-primary cursor-pointer"
+                  aria-label="Close"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
             )}
-            {children}
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-4">{children}</div>
           </motion.div>
         </div>
       )}

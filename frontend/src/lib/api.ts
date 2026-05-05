@@ -18,7 +18,15 @@ export async function apiFetch<T>(
     if (!res.ok) {
       throw new Error(`API error: ${res.status} ${res.statusText}`);
     }
-    return res.json();
+    // DELETE often returns 204 No Content — no JSON body
+    if (res.status === 204) {
+      return undefined as T;
+    }
+    const text = await res.text();
+    if (!text.trim()) {
+      return undefined as T;
+    }
+    return JSON.parse(text) as T;
   } finally {
     clearTimeout(timer);
   }

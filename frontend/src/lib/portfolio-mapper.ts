@@ -21,7 +21,7 @@ interface ApiFixedIncome {
   asset_subtype?: string;
   invested_amount?: number | string;
   purchase_date?: string;
-  maturity_date?: string;
+  maturity_date?: string | null;
   rate_type?: string;
   rate_value?: number | string;
   current_estimated_value?: number | string | null;
