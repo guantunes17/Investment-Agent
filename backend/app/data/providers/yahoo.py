@@ -9,9 +9,19 @@ _executor = ThreadPoolExecutor(max_workers=4)
 
 
 class YahooProvider(BaseDataProvider):
+    def _normalize_symbol(self, ticker: str) -> str:
+        t = (ticker or "").strip().upper()
+        if t.endswith(".SA"):
+            return t
+        # B3 equities in Yahoo usually need .SA suffix (e.g. PETR4.SA).
+        if len(t) >= 5 and t[-2:].isdigit():
+            return f"{t}.SA"
+        return t
+
     async def get_quote(self, ticker: str) -> dict:
         def _fetch():
-            t = yf.Ticker(ticker)
+            symbol = self._normalize_symbol(ticker)
+            t = yf.Ticker(symbol)
             info = t.info
             price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
             prev_close = info.get("previousClose", price)
@@ -31,7 +41,8 @@ class YahooProvider(BaseDataProvider):
 
     async def get_historical(self, ticker: str, period: str = "1mo") -> list[dict]:
         def _fetch():
-            t = yf.Ticker(ticker)
+            symbol = self._normalize_symbol(ticker)
+            t = yf.Ticker(symbol)
             df = t.history(period=period)
             records = []
             for idx, row in df.iterrows():
@@ -50,7 +61,8 @@ class YahooProvider(BaseDataProvider):
 
     async def get_fundamentals(self, ticker: str) -> dict:
         def _fetch():
-            t = yf.Ticker(ticker)
+            symbol = self._normalize_symbol(ticker)
+            t = yf.Ticker(symbol)
             info = t.info
             return {
                 "pe_ratio": info.get("trailingPE"),

@@ -26,7 +26,10 @@ async def enrich_stock_response(stock: StockPosition, registry: DataProviderRegi
     quote_px = float(stock.avg_price)
     try:
         q = await registry.get_quote("stock", stock.ticker)
-        quote_px = float(q.get("price", quote_px))
+        fetched = float(q.get("price", quote_px))
+        # Some providers can return 0/invalid for unavailable tickers; keep avg as safe fallback.
+        if fetched > 0:
+            quote_px = fetched
     except Exception:
         pass
     market_total = qty * quote_px
@@ -50,6 +53,7 @@ async def enrich_stock_response(stock: StockPosition, registry: DataProviderRegi
         "created_at": stock.created_at,
         "updated_at": stock.updated_at,
         "current_price": round(implied_px, 6),
+        "total_value": round(effective_total, 2),
         "profit_loss": round(pnl, 2),
         "profit_loss_pct": round(pnl_pct, 4),
     }

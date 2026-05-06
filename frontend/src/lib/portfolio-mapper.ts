@@ -9,6 +9,7 @@ interface ApiStock {
   quantity?: number | string;
   avg_price?: number | string;
   current_price?: number | string | null;
+  total_value?: number | string | null;
   profit_loss?: number | string | null;
   profit_loss_pct?: number | string | null;
   reported_position_value?: number | string | null;
@@ -108,6 +109,10 @@ export function mapPortfolioResponse(data: unknown): Position[] {
       s.reported_position_value != null && s.reported_position_value !== ""
         ? num(s.reported_position_value)
         : null;
+    const total =
+      s.total_value != null && s.total_value !== ""
+        ? num(s.total_value)
+        : cur * qty;
     out.push({
       id: `s-${s.id}`,
       assetType,
@@ -116,6 +121,7 @@ export function mapPortfolioResponse(data: unknown): Position[] {
       quantity: qty,
       avgPrice: avg,
       currentPrice: cur,
+      currentValue: total,
       pnl,
       pnlPercent: pnlPct,
       reportedPositionValue: rep ?? undefined,

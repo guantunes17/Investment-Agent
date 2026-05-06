@@ -83,6 +83,7 @@ export function AddPositionForm({ onClose }: AddPositionFormProps) {
   const [equityStatementValue, setEquityStatementValue] = useState("");
 
   const addPosition = useAddPosition();
+  const parseLocalNumber = (v: string) => parseFloat(String(v).replace(",", "."));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -168,10 +169,21 @@ export function AddPositionForm({ onClose }: AddPositionFormProps) {
         reported_position_value: stmtNum != null && Number.isFinite(stmtNum) ? stmtNum : null,
       };
     } else {
+      const qtyNum = parseLocalNumber(quantity);
+      const avgNum = parseLocalNumber(avgPrice);
+      if (!Number.isFinite(qtyNum) || qtyNum <= 0) {
+        toast.error("Enter a valid quantity");
+        return;
+      }
+      if (!Number.isFinite(avgNum) || avgNum <= 0) {
+        toast.error("Enter a valid average price");
+        return;
+      }
+
       const eqStmt = equityStatementValue.trim();
       let repEq: number | null = null;
       if (eqStmt.length > 0) {
-        const v = parseFloat(eqStmt.replace(",", "."));
+        const v = parseLocalNumber(eqStmt);
         if (!Number.isFinite(v) || v < 0) {
           toast.error("Enter a valid total position value from your statement (R$)");
           return;
@@ -182,8 +194,8 @@ export function AddPositionForm({ onClose }: AddPositionFormProps) {
         assetType,
         ticker: ticker.toUpperCase(),
         name,
-        quantity: Number(quantity),
-        avgPrice: Number(avgPrice),
+        quantity: qtyNum,
+        avgPrice: avgNum,
         reported_position_value: repEq,
       };
     }
@@ -431,7 +443,8 @@ export function AddPositionForm({ onClose }: AddPositionFormProps) {
           <div className="grid grid-cols-2 gap-3">
             <Input
               label="Quantity"
-              type="number"
+              type="text"
+              inputMode="decimal"
               placeholder="0"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
@@ -439,8 +452,8 @@ export function AddPositionForm({ onClose }: AddPositionFormProps) {
             />
             <Input
               label="Avg price"
-              type="number"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
               placeholder="0.00"
               value={avgPrice}
               onChange={(e) => setAvgPrice(e.target.value)}

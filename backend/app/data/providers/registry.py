@@ -37,7 +37,16 @@ class DataProviderRegistry:
 
     async def get_quote(self, asset_type: str, identifier: str) -> dict:
         provider = self.get_stock_provider(identifier)
-        return await provider.get_quote(identifier)
+        try:
+            quote = await provider.get_quote(identifier)
+            if quote and float(quote.get("price", 0) or 0) > 0:
+                return quote
+        except Exception:
+            pass
+
+        # Fallback chain: if BR first choice failed, try Yahoo; if non-BR failed, try BRAPI.
+        alt = self._yahoo if provider is self._brapi else self._brapi
+        return await alt.get_quote(identifier)
 
     async def get_historical(self, asset_type: str, identifier: str, period: str = "1mo") -> list[dict]:
         provider = self.get_stock_provider(identifier)

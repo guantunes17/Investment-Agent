@@ -277,7 +277,8 @@ function PositionsTable({
             {showType && <th className="px-4 py-3 text-left font-medium">Type</th>}
             <th className="px-4 py-3 text-right font-medium">Qty</th>
             <th className="px-4 py-3 text-right font-medium">Avg Price</th>
-            <th className="px-4 py-3 text-right font-medium">Current</th>
+            <th className="px-4 py-3 text-right font-medium">Current Price</th>
+            <th className="px-4 py-3 text-right font-medium">Current Total</th>
             <th className="px-4 py-3 text-right font-medium">P&L%</th>
             <th className="px-4 py-3 text-right font-medium">Trend</th>
             <th className="px-4 py-3 text-right font-medium">Signal</th>
@@ -309,6 +310,9 @@ function PositionsTable({
               </td>
               <td className="px-4 py-3 text-right text-text-primary">
                 {formatCurrency(pos.currentPrice)}
+              </td>
+              <td className="px-4 py-3 text-right text-text-primary">
+                {formatCurrency(pos.currentValue ?? pos.currentPrice * pos.quantity)}
               </td>
               <td
                 className={cn(
