@@ -1,3 +1,4 @@
+import asyncio
 import csv
 import io
 import logging
@@ -58,11 +59,19 @@ async def list_positions(
 ):
     stocks = await service.list_stocks()
     fixed_income = await service.list_fixed_income()
-    out_stocks = [await _to_stock_response(s, redis) for s in stocks]
+    out_stocks = (
+        await asyncio.gather(*[_to_stock_response(s, redis) for s in stocks])
+        if stocks
+        else []
+    )
     calc = await build_yield_calculator(redis)
-    out_fi = [
-        FixedIncomeResponse(**await enrich_fixed_income_response(fi, calc)) for fi in fixed_income
-    ]
+    out_fi = (
+        await asyncio.gather(
+            *[_to_fixed_income_response(fi, redis) for fi in fixed_income]
+        )
+        if fixed_income
+        else []
+    )
     return {
         "stocks": out_stocks,
         "fixed_income": out_fi,

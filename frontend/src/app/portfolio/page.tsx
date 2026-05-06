@@ -48,7 +48,7 @@ export default function PortfolioPage() {
   const [showTemplates, setShowTemplates] = useState(false);
   const [csvImportHint, setCsvImportHint] =
     useState<(typeof csvImportHints)[number]["value"]>("auto");
-  const { isLoading, positions } = usePortfolio();
+  const { isLoading, isError, refetch, positions } = usePortfolio();
   const queryClient = useQueryClient();
 
   const filteredPositions =
@@ -131,6 +131,22 @@ export default function PortfolioPage() {
       <div className="space-y-6">
         <LoadingCard />
         <LoadingCard />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="space-y-6">
+        <GlassCard className="p-6">
+          <p className="text-text-secondary">
+            Não foi possível carregar as posições. Isso costuma ocorrer quando o servidor ainda está
+            calculando cotações e rendimentos — aguarde e tente de novo.
+          </p>
+          <Button variant="primary" className="mt-4" onClick={() => refetch()}>
+            Tentar novamente
+          </Button>
+        </GlassCard>
       </div>
     );
   }

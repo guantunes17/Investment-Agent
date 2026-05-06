@@ -14,6 +14,15 @@ class Settings(BaseSettings):
 
     secret_key: str = "change-this-to-a-random-secret"
 
+    # Scheduler / automatic reports
+    scheduler_enabled: bool = True
+    scheduler_timezone: str = "America/Sao_Paulo"
+    daily_report_hour: int = 18
+    daily_report_minute: int = 0
+    weekly_report_day: str = "mon"
+    weekly_report_hour: int = 18
+    weekly_report_minute: int = 10
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

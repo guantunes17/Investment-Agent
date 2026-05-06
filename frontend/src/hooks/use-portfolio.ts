@@ -37,10 +37,11 @@ export function usePortfolio() {
   const query = useQuery({
     queryKey: ["portfolio"],
     queryFn: async () => {
-      const raw = await apiFetch<unknown>("/portfolio");
+      const raw = await apiFetch<unknown>("/portfolio", { timeout: 120_000 });
       return mapPortfolioResponse(raw);
     },
     refetchInterval: 60_000,
+    retry: 1,
   });
 
   const positions = query.data ?? [];
@@ -170,7 +171,7 @@ export function useAssetDetail(assetId: string) {
   return useQuery({
     queryKey: ["asset", assetId],
     queryFn: async () => {
-      const raw = await apiFetch<unknown>("/portfolio");
+      const raw = await apiFetch<unknown>("/portfolio", { timeout: 120_000 });
       const positions = mapPortfolioResponse(raw);
       return positions.find((p) => p.id === assetId) ?? null;
     },

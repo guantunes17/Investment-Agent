@@ -138,17 +138,41 @@ investment-agent/
 | GET | `/api/notifications/count` | Unread notification count |
 | GET | `/api/reports/` | List reports |
 | POST | `/api/reports/generate` | Generate new report (on-demand) |
+| DELETE | `/api/reports/{id}` | Delete a report |
 
 ## Data Refresh Schedule
 
 | Job | Frequency | Details |
 |-----|-----------|---------|
-| Stock/FII quotes | Every 15 min | During market hours (B3: 10-17 BRT, US: 9:30-16 ET) |
 | BCB rates (CDI/Selic/IPCA) | Daily 09:00 BRT | From Banco Central API |
-| Fixed-income recalculation | Daily | Uses latest BCB rates |
-| Maturity alerts | Daily | Flags positions maturing in 7/30/60 days |
+| Fixed-income recalculation | Daily 09:30 BRT | Uses latest BCB rates |
+| Maturity alerts | Daily 10:00 BRT | Flags positions maturing in 7/30/60 days |
+| Daily report generation | Daily 18:00 BRT | AI report persisted in `/api/reports` |
+| Weekly report generation | Monday 18:10 BRT | AI weekly report persisted in `/api/reports` |
 
-Note: AI-powered analysis and reports are **on-demand only** (triggered by the user via chat or UI buttons) to minimize OpenAI API costs.
+Scheduler times are configurable via `.env`:
+
+```bash
+SCHEDULER_ENABLED=true
+SCHEDULER_TIMEZONE=America/Sao_Paulo
+DAILY_REPORT_HOUR=18
+DAILY_REPORT_MINUTE=0
+WEEKLY_REPORT_DAY=mon
+WEEKLY_REPORT_HOUR=18
+WEEKLY_REPORT_MINUTE=10
+```
+
+Production recommendation:
+- Run API containers with `SCHEDULER_ENABLED=false`
+- Run exactly one dedicated scheduler process/container with `SCHEDULER_ENABLED=true`
+
+This avoids duplicated jobs when scaling API workers.
+
+## Runtime Dependency Notes
+
+- Report generation requires: **backend + PostgreSQL + Redis + OpenAI API access**.
+- If Docker is down, report generation fails because backend/API is unavailable.
+- Docker is not mandatory in principle: reports still work if you run backend locally with reachable DB/Redis and valid OpenAI credentials.
 
 ## License
 

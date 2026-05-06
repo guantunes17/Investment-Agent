@@ -55,7 +55,8 @@ Provide your analysis in the following structure:
 Be specific, data-driven, and transparent about limitations.
 """
 
-REPORT_DAILY_PROMPT = """Generate a daily portfolio report based on the following data:
+REPORT_DAILY_PROMPT = """Generate a DAILY portfolio report in natural language for an investor (NOT for developers).
+Write in Portuguese (pt-BR), with clear interpretation, practical opinion, and actionability.
 
 Portfolio Summary:
 {portfolio_summary}
@@ -63,15 +64,86 @@ Portfolio Summary:
 Market Highlights:
 {market_data}
 
-Provide:
-1. Portfolio performance today
-2. Notable movers (biggest gains/losses)
-3. Market context (key indices, rates)
-4. Alerts or action items (maturities, rebalancing needs)
-5. Brief outlook
+Output MUST be valid JSON and follow exactly this structure:
+{
+  "title": "Relatório Diário — YYYY-MM-DD",
+  "summary": "2-4 frases, linguagem simples, com interpretação do dia.",
+  "scorecards": [
+    {
+      "id": "portfolio_snapshot",
+      "label": "Panorama da Carteira",
+      "value": "PL R$ 13.372,56 | P/L +R$ 318,74 (+2,44%)",
+      "status": "positive",
+      "reason": "Curto racional do porquê esse status."
+    },
+    {
+      "id": "allocation_drift",
+      "label": "Drift de Alocação",
+      "value": "Renda Fixa 86,8% (acima do alvo)",
+      "status": "warning",
+      "reason": "Explicação objetiva do desvio."
+    },
+    {
+      "id": "risk_concentration",
+      "label": "Risco de Concentração",
+      "value": "Concentração moderada em renda fixa",
+      "status": "warning",
+      "reason": "Explicação objetiva do risco."
+    },
+    {
+      "id": "macro_regime",
+      "label": "Regime Macro",
+      "value": "Selic alta favorece pós-fixados",
+      "status": "neutral",
+      "reason": "Leitura de CDI/Selic/IPCA para a carteira."
+    }
+  ],
+  "action_items": [
+    "Prioridade 1: ação concreta e curta.",
+    "Prioridade 2: ação concreta e curta.",
+    "Prioridade 3: ação concreta e curta."
+  ],
+  "confidence": {
+    "level": "high|medium|low",
+    "reason": "Por que o nível de confiança é esse."
+  },
+  "data_limitations": [
+    "Limitação 1 dos dados disponíveis.",
+    "Limitação 2 dos dados disponíveis."
+  ],
+  "sections": [
+    {
+      "title": "Performance da Carteira Hoje",
+      "content": "Parágrafo interpretativo com números principais e leitura do que significam."
+    },
+    {
+      "title": "Movimentos Relevantes",
+      "content": "Parágrafo explicando principais contribuições/limitações de dados."
+    },
+    {
+      "title": "Contexto de Mercado",
+      "content": "Parágrafo conectando CDI/Selic/IPCA ao portfólio."
+    },
+    {
+      "title": "Alertas e Ações Recomendadas",
+      "content": "Lista curta em texto corrido com prioridades e próximos passos."
+    },
+    {
+      "title": "Opinião do Modelo (Cenário Base)",
+      "content": "Opinião objetiva com cenário base, riscos e nível de confiança."
+    }
+  ]
+}
+
+Rules:
+- Do NOT return raw dictionaries/objects inside section content.
+- Do NOT include code, JSON fragments, or key-value dumps in content.
+- Be explicit about assumptions and data limitations.
+- Keep scorecards concise and decision-oriented.
 """
 
-REPORT_WEEKLY_PROMPT = """Generate a weekly portfolio report based on the following data:
+REPORT_WEEKLY_PROMPT = """Generate a WEEKLY portfolio report in natural language for an investor (NOT for developers).
+Write in Portuguese (pt-BR), with clear interpretation, practical opinion, and actionability.
 
 Portfolio Summary:
 {portfolio_summary}
@@ -79,12 +151,67 @@ Portfolio Summary:
 Week Performance:
 {weekly_data}
 
-Provide:
-1. Weekly portfolio performance summary
-2. Asset class performance breakdown
-3. Top performers and underperformers
-4. Macro environment summary (CDI/Selic/IPCA trends, market indices)
-5. Fixed income: any upcoming maturities, yield changes
-6. Suggested actions for the coming week
-7. Risk alerts
+Output MUST be valid JSON and follow exactly this structure:
+{
+  "title": "Relatório Semanal — YYYY-MM-DD",
+  "summary": "2-4 frases com leitura da semana.",
+  "scorecards": [
+    {
+      "id": "weekly_performance",
+      "label": "Desempenho da Semana",
+      "value": "P/L semanal e direção",
+      "status": "positive|neutral|warning|negative",
+      "reason": "Interpretação curta do resultado."
+    },
+    {
+      "id": "allocation_drift",
+      "label": "Drift de Alocação",
+      "value": "Classe acima/abaixo do alvo",
+      "status": "neutral|warning",
+      "reason": "Leitura curta do desvio."
+    },
+    {
+      "id": "risk_overview",
+      "label": "Visão de Risco",
+      "value": "Concentração, liquidez, vencimentos",
+      "status": "neutral|warning|negative",
+      "reason": "Principal risco da semana."
+    },
+    {
+      "id": "macro_impact",
+      "label": "Impacto Macro",
+      "value": "Efeito de CDI/Selic/IPCA na carteira",
+      "status": "neutral|positive|warning",
+      "reason": "Leitura macro aplicada ao portfólio."
+    }
+  ],
+  "action_items": [
+    "Prioridade 1 para a próxima semana.",
+    "Prioridade 2 para a próxima semana.",
+    "Prioridade 3 para a próxima semana."
+  ],
+  "confidence": {
+    "level": "high|medium|low",
+    "reason": "Por que o nível de confiança é esse."
+  },
+  "data_limitations": [
+    "Limitação 1 dos dados disponíveis.",
+    "Limitação 2 dos dados disponíveis."
+  ],
+  "sections": [
+    { "title": "Resumo Semanal da Carteira", "content": "..." },
+    { "title": "Desempenho por Classe de Ativo", "content": "..." },
+    { "title": "Destaques e Pontos de Atenção", "content": "..." },
+    { "title": "Macro e Juros (CDI/Selic/IPCA)", "content": "..." },
+    { "title": "Renda Fixa: Vencimentos e Estratégia", "content": "..." },
+    { "title": "Plano de Ação para a Próxima Semana", "content": "..." },
+    { "title": "Opinião do Modelo e Nível de Confiança", "content": "..." }
+  ]
+}
+
+Rules:
+- Do NOT return raw dictionaries/objects inside section content.
+- Do NOT include code, JSON fragments, or key-value dumps in content.
+- Be explicit about assumptions and data limitations.
+- Weekly content should include trend/progress context.
 """

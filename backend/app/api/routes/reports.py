@@ -1,12 +1,42 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from redis.asyncio import Redis
 
-from app.api.deps import get_db
-from app.api.schemas import ReportResponse, ReportGenerateRequest
+from app.api.deps import get_db, get_redis
+from app.api.schemas import (
+    ReportResponse,
+    ReportGenerateRequest,
+    ReportSchedulerSettingsResponse,
+    ReportSchedulerSettingsUpdate,
+)
+from app.config import get_settings
 from app.models.report import Report
 
 router = APIRouter()
+REPORT_DAILY_ENABLED_KEY = "scheduler:reports:daily_enabled"
+REPORT_WEEKLY_ENABLED_KEY = "scheduler:reports:weekly_enabled"
+REPORT_WEEKLY_DAY_KEY = "scheduler:reports:weekly_day"
+
+
+def _scheduler_settings_from_redis(daily: str | None, weekly: str | None, day: str | None):
+    settings = get_settings()
+    wday = (day or "").strip().lower()[:3] if day else ""
+    allowed = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
+    if wday not in allowed:
+        wday = str(settings.weekly_report_day).strip().lower()[:3]
+    if wday not in allowed:
+        wday = "mon"
+    return ReportSchedulerSettingsResponse(
+        daily_enabled=(daily != "false"),
+        weekly_enabled=(weekly != "false"),
+        weekly_day=wday,
+        daily_hour=settings.daily_report_hour,
+        daily_minute=settings.daily_report_minute,
+        weekly_hour=settings.weekly_report_hour,
+        weekly_minute=settings.weekly_report_minute,
+        timezone=settings.scheduler_timezone,
+    )
 
 
 @router.get("/", response_model=list[ReportResponse])
@@ -53,3 +83,43 @@ async def generate_report(
     await db.commit()
     await db.refresh(report)
     return ReportResponse.model_validate(report)
+
+
+@router.delete("/{report_id}", status_code=204)
+async def delete_report(
+    report_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    report = await db.get(Report, report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    await db.delete(report)
+    await db.commit()
+
+
+@router.get("/scheduler/settings", response_model=ReportSchedulerSettingsResponse)
+async def get_scheduler_settings(
+    redis: Redis = Depends(get_redis),
+):
+    daily = await redis.get(REPORT_DAILY_ENABLED_KEY)
+    weekly = await redis.get(REPORT_WEEKLY_ENABLED_KEY)
+    wday = await redis.get(REPORT_WEEKLY_DAY_KEY)
+    return _scheduler_settings_from_redis(daily, weekly, wday)
+
+
+@router.put("/scheduler/settings", response_model=ReportSchedulerSettingsResponse)
+async def update_scheduler_settings(
+    payload: ReportSchedulerSettingsUpdate,
+    redis: Redis = Depends(get_redis),
+):
+    if payload.daily_enabled is not None:
+        await redis.set(REPORT_DAILY_ENABLED_KEY, str(payload.daily_enabled).lower())
+    if payload.weekly_enabled is not None:
+        await redis.set(REPORT_WEEKLY_ENABLED_KEY, str(payload.weekly_enabled).lower())
+    if payload.weekly_day is not None:
+        await redis.set(REPORT_WEEKLY_DAY_KEY, payload.weekly_day)
+
+    daily = await redis.get(REPORT_DAILY_ENABLED_KEY)
+    weekly = await redis.get(REPORT_WEEKLY_ENABLED_KEY)
+    wday = await redis.get(REPORT_WEEKLY_DAY_KEY)
+    return _scheduler_settings_from_redis(daily, weekly, wday)

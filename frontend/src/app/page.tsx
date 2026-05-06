@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { GlassCard } from "@/components/ui/glass-card";
+import { Button } from "@/components/ui/button";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import { Badge, type RecommendationType } from "@/components/ui/badge";
 import { Sparkline } from "@/components/ui/sparkline";
@@ -27,11 +28,12 @@ interface RebalanceData {
 }
 
 export default function Dashboard() {
-  const { isLoading, positions, totalValue, dailyPnl, dailyPnlPercent } = usePortfolio();
+  const { isLoading, isError, refetch, positions, totalValue, dailyPnl, dailyPnlPercent } =
+    usePortfolio();
 
   const { data: rebalanceData } = useQuery<RebalanceData>({
     queryKey: ["rebalance"],
-    queryFn: () => apiFetch("/portfolio/rebalance"),
+    queryFn: () => apiFetch("/portfolio/rebalance", { timeout: 60_000 }),
   });
 
   const allocationData = Object.entries(
@@ -60,6 +62,20 @@ export default function Dashboard() {
           <LoadingCard />
         </div>
       </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <GlassCard className="p-6">
+        <p className="text-text-secondary">
+          Não foi possível carregar o portfólio (timeout ou erro no servidor). Tente novamente em alguns
+          segundos.
+        </p>
+        <Button variant="primary" className="mt-4" onClick={() => refetch()}>
+          Tentar novamente
+        </Button>
+      </GlassCard>
     );
   }
 

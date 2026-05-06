@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # --- Stock Schemas ---
@@ -166,6 +166,44 @@ class ReportResponse(BaseModel):
 
 class ReportGenerateRequest(BaseModel):
     report_type: str = "daily"
+
+
+class ReportSchedulerSettingsResponse(BaseModel):
+    daily_enabled: bool
+    weekly_enabled: bool
+    weekly_day: str
+    daily_hour: int
+    daily_minute: int
+    weekly_hour: int
+    weekly_minute: int
+    timezone: str
+
+
+class ReportSchedulerSettingsUpdate(BaseModel):
+    daily_enabled: Optional[bool] = None
+    weekly_enabled: Optional[bool] = None
+    weekly_day: Optional[str] = None
+
+    @field_validator("weekly_day")
+    @classmethod
+    def weekly_day_ok(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        allowed = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
+        aliases = {
+            "monday": "mon",
+            "tuesday": "tue",
+            "wednesday": "wed",
+            "thursday": "thu",
+            "friday": "fri",
+            "saturday": "sat",
+            "sunday": "sun",
+        }
+        low = v.strip().lower()
+        low = aliases.get(low, low[:3] if len(low) >= 3 else low)
+        if low not in allowed:
+            raise ValueError("weekly_day must be a weekday (mon..sun)")
+        return low
 
 
 # --- Notification Schemas ---

@@ -40,7 +40,8 @@ export function CorrelationMatrix() {
 
   const { data, isLoading, isError } = useQuery<CorrelationResponse>({
     queryKey: ["correlation"],
-    queryFn: () => apiFetch<CorrelationResponse>("/portfolio/correlation"),
+    queryFn: () =>
+      apiFetch<CorrelationResponse>("/portfolio/correlation", { timeout: 60_000 }),
   });
 
   if (isLoading) {

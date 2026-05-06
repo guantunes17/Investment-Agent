@@ -20,15 +20,20 @@ async def lifespan(app: FastAPI):
     redis = await get_redis()
     logger.info("Redis connection established")
 
-    from app.scheduler.jobs import setup_scheduler
-    sched = setup_scheduler()
-    sched.start()
-    logger.info("Scheduler started with all jobs")
+    sched = None
+    if settings.scheduler_enabled:
+        from app.scheduler.jobs import setup_scheduler
+        sched = setup_scheduler()
+        sched.start()
+        logger.info("Scheduler started with all jobs")
+    else:
+        logger.info("Scheduler is disabled by configuration")
 
     yield
 
-    sched.shutdown(wait=False)
-    logger.info("Scheduler stopped")
+    if sched is not None:
+        sched.shutdown(wait=False)
+        logger.info("Scheduler stopped")
 
     redis_conn = await get_redis()
     await redis_conn.close()
