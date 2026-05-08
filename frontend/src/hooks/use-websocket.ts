@@ -28,6 +28,15 @@ export function useWebSocket({
   const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
   const [isConnected, setIsConnected] = useState(false);
 
+  const onMessageRef = useRef(onMessage);
+  const onOpenRef = useRef(onOpen);
+  const onCloseRef = useRef(onClose);
+  const onErrorRef = useRef(onError);
+  onMessageRef.current = onMessage;
+  onOpenRef.current = onOpen;
+  onCloseRef.current = onClose;
+  onErrorRef.current = onError;
+
   const connect = useCallback(() => {
     try {
       const wsUrl = url.startsWith("ws")
@@ -39,21 +48,21 @@ export function useWebSocket({
       ws.onopen = () => {
         setIsConnected(true);
         reconnectAttemptsRef.current = 0;
-        onOpen?.();
+        onOpenRef.current?.();
       };
 
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          onMessage?.(data);
+          onMessageRef.current?.(data);
         } catch {
-          onMessage?.(event.data);
+          onMessageRef.current?.(event.data);
         }
       };
 
       ws.onclose = () => {
         setIsConnected(false);
-        onClose?.();
+        onCloseRef.current?.();
         if (reconnect && reconnectAttemptsRef.current < maxReconnectAttempts) {
           reconnectAttemptsRef.current++;
           reconnectTimeoutRef.current = setTimeout(connect, reconnectInterval);
@@ -61,7 +70,7 @@ export function useWebSocket({
       };
 
       ws.onerror = (error) => {
-        onError?.(error);
+        onErrorRef.current?.(error);
       };
 
       wsRef.current = ws;
@@ -71,7 +80,7 @@ export function useWebSocket({
         reconnectTimeoutRef.current = setTimeout(connect, reconnectInterval);
       }
     }
-  }, [url, onMessage, onOpen, onClose, onError, reconnect, reconnectInterval, maxReconnectAttempts]);
+  }, [url, reconnect, reconnectInterval, maxReconnectAttempts]);
 
   const sendMessage = useCallback((data: unknown) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {

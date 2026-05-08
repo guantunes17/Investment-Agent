@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { MessageBubble } from "@/components/chat/message-bubble";
 import { RecommendationCard, type RecommendationData } from "@/components/chat/recommendation-card";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface ChatMessage {
   id: string;
@@ -32,22 +33,33 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const onWsMessage = useCallback((data: unknown) => {
+    const msg = data as {
+      role?: string;
+      content?: string;
+      recommendation?: RecommendationData;
+    };
+    setIsThinking(false);
+    if (msg.role === "error") {
+      toast.error(msg.content ?? "Chat error");
+      return;
+    }
+    if (typeof msg.content !== "string") return;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        role: "agent",
+        content: msg.content,
+        timestamp: new Date().toLocaleTimeString(),
+        recommendation: msg.recommendation,
+      },
+    ]);
+  }, []);
+
   const { isConnected, sendMessage } = useWebSocket({
     url: "/ws/chat",
-    onMessage: (data) => {
-      const msg = data as { content: string; recommendation?: RecommendationData };
-      setIsThinking(false);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "agent",
-          content: msg.content,
-          timestamp: new Date().toLocaleTimeString(),
-          recommendation: msg.recommendation,
-        },
-      ]);
-    },
+    onMessage: onWsMessage,
   });
 
   useEffect(() => {
@@ -57,6 +69,10 @@ export default function ChatPage() {
   const handleSend = (text?: string) => {
     const messageText = text || input.trim();
     if (!messageText) return;
+    if (!isConnected) {
+      toast.error("Not connected to chat server. Wait for the green indicator or refresh the page.");
+      return;
+    }
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
@@ -140,6 +156,8 @@ export default function ChatPage() {
           <div className="relative flex-1">
             <input
               ref={inputRef}
+              id="chat-message-input"
+              name="message"
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -157,7 +175,7 @@ export default function ChatPage() {
             variant="primary"
             size="md"
             onClick={() => handleSend()}
-            disabled={!input.trim() || isThinking}
+            disabled={!input.trim() || isThinking || !isConnected}
           >
             <Send className="h-4 w-4" />
           </Button>
