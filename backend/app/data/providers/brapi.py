@@ -32,6 +32,16 @@ class BrapiProvider(BaseDataProvider):
                 "market_cap": data.get("marketCap", 0),
             }
 
+    @staticmethod
+    def _normalize_date(d) -> str:
+        """Convert brapi date (Unix timestamp int or ISO string) to YYYY-MM-DD."""
+        if isinstance(d, (int, float)):
+            from datetime import datetime, timezone
+            return datetime.fromtimestamp(d, tz=timezone.utc).strftime("%Y-%m-%d")
+        if isinstance(d, str):
+            return d[:10]
+        return str(d)[:10]
+
     async def get_historical(self, ticker: str, period: str = "1mo") -> list[dict]:
         range_map = {
             "1d": "1d", "5d": "5d", "1mo": "1mo", "3mo": "3mo",
@@ -50,7 +60,7 @@ class BrapiProvider(BaseDataProvider):
             records = []
             for item in historical:
                 records.append({
-                    "date": item.get("date", ""),
+                    "date": self._normalize_date(item.get("date", "")),
                     "open": item.get("open"),
                     "high": item.get("high"),
                     "low": item.get("low"),

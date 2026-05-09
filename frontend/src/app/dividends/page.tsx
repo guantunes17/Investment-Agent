@@ -68,6 +68,8 @@ export default function DividendsPage() {
     monthlyProjection = [],
   } = data ?? {};
 
+  const allZero = positions.length > 0 && positions.every((p) => p.dividendYield === 0);
+
   const monthlyAverage = totalAnnualIncome / 12;
 
   const chartData = monthlyProjection.map((item) => ({
@@ -77,9 +79,22 @@ export default function DividendsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-text-primary">
-        Dividends &amp; Yield
-      </h1>
+      <div className="flex items-start justify-between">
+        <h1 className="text-2xl font-bold text-text-primary">
+          Dividends &amp; Yield
+        </h1>
+        <p className="text-xs text-text-muted max-w-xs text-right">
+          Covers stocks &amp; FIIs only. Fixed-income yield is shown separately in each position&apos;s detail view.
+        </p>
+      </div>
+
+      {allZero && (
+        <GlassCard>
+          <p className="text-center text-sm text-text-muted">
+            Dividend data temporarily unavailable. Market data providers may be rate-limited — try again in a few minutes.
+          </p>
+        </GlassCard>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

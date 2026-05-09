@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -6,10 +8,27 @@ from app.api.deps import get_db, get_redis
 from app.api.schemas import AnalysisResponse, AnalysisTriggerRequest, RatesResponse
 from app.data.cache import CacheService
 from app.data.providers.bcb import BCBProvider
+from app.data.providers.registry import DataProviderRegistry
 from app.models.analysis import AnalysisResult
 from app.yield_engine.rates import RateService
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+@router.get("/historical/{ticker}")
+async def get_historical_ohlcv(
+    ticker: str,
+    period: str = Query(default="3mo", regex="^(1mo|3mo|6mo|1y)$"),
+):
+    registry = DataProviderRegistry()
+    try:
+        data = await registry.get_historical("stock", ticker, period)
+        return data
+    except Exception as e:
+        logger.warning("Failed to fetch historical data for %s (period=%s): %s", ticker, period, e)
+        return []
 
 
 @router.get("/rates", response_model=RatesResponse)

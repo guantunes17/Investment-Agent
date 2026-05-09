@@ -2,12 +2,13 @@ import asyncio
 import csv
 import io
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Body, Form
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from redis.asyncio import Redis
@@ -18,7 +19,9 @@ from app.api.schemas import (
     FixedIncomeCreate, FixedIncomeUpdate, FixedIncomeResponse,
     PortfolioSummaryResponse, CSVImportResponse,
 )
+from app.data.cache import CacheService
 from app.models.fixed_income import FixedIncomePosition
+from app.models.settings import UserSettings
 from app.models.stock_position import StockPosition
 from app.services.portfolio import PortfolioService
 from app.services.csv_import import CSVImportService
@@ -344,7 +347,13 @@ async def get_dividends(service: PortfolioService = Depends(_get_service)):
     for s in stocks:
         try:
             fundamentals = await registry.get_fundamentals(s.ticker)
-            dy = fundamentals.get("dividend_yield") or 0
+            raw_dy = fundamentals.get("dividend_yield") or 0
+            # Normalize: brapi returns as percentage (e.g. 8.5 = 8.5%), yfinance as decimal (0.085)
+            # If value > 1.0, it's already a percentage — convert to decimal
+            dy = float(raw_dy)
+            if dy > 1.0:
+                dy = dy / 100.0
+            logger.info("Dividend yield for %s: raw=%s normalized=%.4f", s.ticker, raw_dy, dy)
             annual_income = float(s.quantity) * float(s.avg_price) * dy
             results.append({
                 "ticker": s.ticker,
@@ -459,6 +468,15 @@ async def get_performance(
 
 # --- Daily P&L ---
 
+def _normalize_date_str(d) -> str:
+    """Convert a date value (ISO string or Unix timestamp int) to YYYY-MM-DD string."""
+    if isinstance(d, (int, float)):
+        return datetime.fromtimestamp(d, tz=timezone.utc).strftime("%Y-%m-%d")
+    if isinstance(d, str):
+        return d[:10]
+    return str(d)[:10]
+
+
 @router.get("/daily-pnl")
 async def get_daily_pnl(
     year: int = Query(default=None),
@@ -470,22 +488,36 @@ async def get_daily_pnl(
     registry = DataProviderRegistry()
     stocks = await service.list_stocks()
 
+    if not stocks:
+        logger.info("No stock positions found for daily P&L calculation")
+        return []
+
     daily_values: dict[str, float] = {}
     for s in stocks:
         try:
             hist = await registry.get_historical("stock", s.ticker, "1y")
+            points_added = 0
             for point in hist:
-                d = point["date"][:10]
+                d = _normalize_date_str(point.get("date", ""))
+                close = point.get("close")
+                if not d or close is None:
+                    continue
                 if d.startswith(str(year)):
-                    daily_values[d] = daily_values.get(d, 0) + point["close"] * float(s.quantity)
-        except Exception:
-            pass
+                    daily_values[d] = daily_values.get(d, 0) + float(close) * float(s.quantity)
+                    points_added += 1
+            logger.info("Fetched %d data points for %s (year %s)", points_added, s.ticker, year)
+        except Exception as e:
+            logger.warning("Failed to fetch daily P&L data for %s: %s", s.ticker, e)
+
+    if not daily_values:
+        logger.warning("No daily P&L data found for year %s", year)
+        return []
 
     dates = sorted(daily_values.keys())
     result = []
     for i, d in enumerate(dates):
         if i == 0:
-            result.append({"date": d, "pnl": 0})
+            result.append({"date": d, "pnl": 0.0})
         else:
             pnl = daily_values[d] - daily_values[dates[i - 1]]
             result.append({"date": d, "pnl": round(pnl, 2)})
@@ -540,35 +572,63 @@ async def get_correlation(service: PortfolioService = Depends(_get_service)):
     }
 
 
-# --- Allocation Targets ---
+# --- Allocation Targets (DB-backed) ---
 
-_allocation_targets: dict[str, float] = {
+_DEFAULT_ALLOCATION_TARGETS: dict[str, float] = {
     "stock": 60.0,
     "fixed-income": 30.0,
     "fii": 10.0,
 }
 
 
+async def _get_allocation_targets(db: AsyncSession) -> dict[str, float]:
+    stmt = select(UserSettings).where(UserSettings.key == "allocation_targets")
+    result = await db.execute(stmt)
+    row = result.scalar_one_or_none()
+    if row:
+        return dict(row.value_json)
+    return dict(_DEFAULT_ALLOCATION_TARGETS)
+
+
+async def _save_allocation_targets(targets: dict[str, float], db: AsyncSession) -> None:
+    stmt = select(UserSettings).where(UserSettings.key == "allocation_targets")
+    result = await db.execute(stmt)
+    row = result.scalar_one_or_none()
+    if row:
+        row.value_json = targets
+    else:
+        db.add(UserSettings(key="allocation_targets", value_json=targets))
+    await db.commit()
+
+
 @router.get("/allocation-targets")
-async def get_allocation_targets():
-    return _allocation_targets
+async def get_allocation_targets(db: AsyncSession = Depends(get_db)):
+    return await _get_allocation_targets(db)
 
 
 @router.put("/allocation-targets")
-async def update_allocation_targets(targets: dict[str, float] = Body(...)):
+async def update_allocation_targets(
+    targets: dict[str, float] = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
     total = sum(targets.values())
     if abs(total - 100) > 0.01:
         raise HTTPException(status_code=400, detail=f"Targets must sum to 100%, got {total}%")
-    _allocation_targets.update(targets)
-    return _allocation_targets
+    await _save_allocation_targets(targets, db)
+    logger.info("Allocation targets updated: %s", targets)
+    return targets
 
 
 # --- Rebalance Suggestions ---
 
 @router.get("/rebalance")
-async def get_rebalance(service: PortfolioService = Depends(_get_service)):
+async def get_rebalance(
+    service: PortfolioService = Depends(_get_service),
+    db: AsyncSession = Depends(get_db),
+):
     stocks = await service.list_stocks()
     fixed_income = await service.list_fixed_income()
+    allocation_targets = await _get_allocation_targets(db)
 
     stock_value = sum(float(s.quantity * s.avg_price) for s in stocks if str(s.asset_subtype).upper() == "STOCK")
     fii_value = sum(float(s.quantity * s.avg_price) for s in stocks if str(s.asset_subtype).upper() == "FII")
@@ -576,7 +636,7 @@ async def get_rebalance(service: PortfolioService = Depends(_get_service)):
     total = stock_value + fii_value + fi_value
 
     if total == 0:
-        return {"current": {}, "targets": _allocation_targets, "suggestions": []}
+        return {"current": {}, "targets": allocation_targets, "suggestions": []}
 
     current = {
         "stock": round(stock_value / total * 100, 1),
@@ -585,7 +645,7 @@ async def get_rebalance(service: PortfolioService = Depends(_get_service)):
     }
 
     suggestions = []
-    for asset_class, target_pct in _allocation_targets.items():
+    for asset_class, target_pct in allocation_targets.items():
         current_pct = current.get(asset_class, 0)
         diff_pct = target_pct - current_pct
         diff_value = diff_pct / 100 * total
@@ -601,7 +661,72 @@ async def get_rebalance(service: PortfolioService = Depends(_get_service)):
 
     return {
         "current": current,
-        "targets": _allocation_targets,
+        "targets": allocation_targets,
         "suggestions": suggestions,
         "totalValue": round(total, 2),
     }
+
+
+# --- Portfolio News ---
+
+@router.get("/news")
+async def get_portfolio_news(
+    service: PortfolioService = Depends(_get_service),
+    redis: Redis = Depends(get_redis),
+):
+    cache = CacheService(redis)
+    cache_key = "portfolio_news"
+    cached = await cache.get(cache_key)
+    if cached:
+        return cached
+
+    stocks = await service.list_stocks()
+    if not stocks:
+        return {"articles": [], "last_updated": datetime.utcnow().isoformat()}
+
+    registry = DataProviderRegistry()
+
+    async def _fetch_news_for_ticker(ticker: str) -> list[dict]:
+        try:
+            return await registry._yahoo.get_news(ticker)
+        except Exception as e:
+            logger.warning("Failed to fetch news for %s: %s", ticker, e)
+            return []
+
+    tasks = [_fetch_news_for_ticker(s.ticker) for s in stocks]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    seen_titles: set[str] = set()
+    articles: list[dict] = []
+    for ticker_news, stock in zip(results, stocks):
+        if isinstance(ticker_news, Exception):
+            continue
+        for item in ticker_news:
+            title = item.get("title", "")
+            if not title or title in seen_titles:
+                continue
+            seen_titles.add(title)
+            # Convert Unix timestamp published_at to ISO string
+            pub = item.get("published_at", "")
+            if isinstance(pub, (int, float)):
+                try:
+                    pub = datetime.fromtimestamp(pub, tz=timezone.utc).isoformat()
+                except Exception:
+                    pub = ""
+            articles.append({**item, "published_at": pub, "related_tickers": [stock.ticker]})
+
+    # Sort by published_at descending
+    def _sort_key(a: dict):
+        try:
+            return a.get("published_at") or ""
+        except Exception:
+            return ""
+
+    articles.sort(key=_sort_key, reverse=True)
+
+    response = {
+        "articles": articles[:50],
+        "last_updated": datetime.utcnow().isoformat(),
+    }
+    await cache.set(cache_key, response, ttl=1800)
+    return response

@@ -92,3 +92,28 @@ class YahooProvider(BaseDataProvider):
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(_executor, _fetch)
+
+    async def get_news(self, ticker: str) -> list[dict]:
+        def _fetch():
+            symbol = self._normalize_symbol(ticker)
+            t = yf.Ticker(symbol)
+            news = t.news or []
+            result = []
+            for item in news[:10]:
+                thumbnail = ""
+                if item.get("thumbnail"):
+                    resolutions = item.get("thumbnail", {}).get("resolutions", [])
+                    if resolutions:
+                        thumbnail = resolutions[0].get("url", "")
+                result.append({
+                    "title": item.get("title", ""),
+                    "summary": item.get("summary", ""),
+                    "url": item.get("link", ""),
+                    "source": item.get("publisher", ""),
+                    "published_at": item.get("providerPublishTime", ""),
+                    "thumbnail": thumbnail,
+                })
+            return result
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(_executor, _fetch)

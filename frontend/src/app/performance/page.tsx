@@ -170,6 +170,8 @@ export default function PerformancePage() {
     );
   }
 
+  const isEmpty = !data || data.length === 0;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -193,6 +195,15 @@ export default function PerformancePage() {
           </button>
         </div>
       </div>
+
+      {/* Empty state */}
+      {isEmpty && (
+        <GlassCard>
+          <p className="text-center text-text-muted">
+            No trading data available for {year}. Add stock positions and the heatmap will populate as market data is fetched.
+          </p>
+        </GlassCard>
+      )}
 
       {/* Summary stats */}
       {stats && (

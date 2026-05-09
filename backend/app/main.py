@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.api.routes import portfolio, watchlist, analysis, chat, reports, notifications
+from app.api.routes import settings as settings_routes
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -67,6 +68,7 @@ app.include_router(analysis.router, prefix="/api/analysis", tags=["analysis"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
+app.include_router(settings_routes.router, prefix="/api/settings", tags=["settings"])
 
 from app.api.routes.chat import websocket_chat
 from app.api.routes.notifications import notification_stream

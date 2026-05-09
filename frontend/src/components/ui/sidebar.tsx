@@ -15,6 +15,7 @@ import {
   TrendingUp,
   DollarSign,
   BarChart3,
+  Newspaper,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
@@ -27,6 +28,7 @@ const navItems = [
   { href: "/watchlist", label: "Watchlist", icon: Eye },
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/reports", label: "Reports", icon: FileText },
+  { href: "/newsletter", label: "Newsletter", icon: Newspaper },
   { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

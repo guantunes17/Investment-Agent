@@ -12,7 +12,6 @@ router = APIRouter()
 _chat_history: list[dict] = []
 
 
-@router.websocket("/ws")
 async def websocket_chat(websocket: WebSocket):
     await websocket.accept()
     try:

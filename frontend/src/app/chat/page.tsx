@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, Loader2 } from "lucide-react";
+import { Send, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MessageBubble } from "@/components/chat/message-bubble";
 import { RecommendationCard, type RecommendationData } from "@/components/chat/recommendation-card";
@@ -50,7 +50,7 @@ export default function ChatPage() {
       {
         id: crypto.randomUUID(),
         role: "agent",
-        content: msg.content,
+        content: msg.content!,
         timestamp: new Date().toLocaleTimeString(),
         recommendation: msg.recommendation,
       },
@@ -62,9 +62,15 @@ export default function ChatPage() {
     onMessage: onWsMessage,
   });
 
+  // Auto-scroll on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isThinking]);
+
+  // Auto-focus input on mount
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
   const handleSend = (text?: string) => {
     const messageText = text || input.trim();
@@ -84,7 +90,22 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setIsThinking(true);
-    sendMessage({ message: messageText });
+
+    // Send current message with full conversation history
+    const history = messages.map((m) => ({
+      role: m.role === "agent" ? "assistant" : "user",
+      content: m.content,
+    }));
+    sendMessage({ message: messageText, history });
+
+    // Re-focus after send
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const handleClear = () => {
+    setMessages([]);
+    setIsThinking(false);
+    setTimeout(() => inputRef.current?.focus(), 0);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -96,12 +117,45 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-[calc(100vh-5rem)] flex-col md:h-[calc(100vh-3rem)]">
+      {/* Chat header */}
+      <div className="flex items-center justify-between border-b border-glass-border px-4 py-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-text-primary">AI Investment Assistant</h2>
+          <span
+            className={cn(
+              "flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+              isConnected
+                ? "bg-profit/10 text-profit"
+                : "bg-amber-500/10 text-amber-400"
+            )}
+          >
+            <span
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                isConnected ? "bg-profit animate-none" : "bg-amber-400 animate-pulse"
+              )}
+            />
+            {isConnected ? "Connected" : "Reconnecting…"}
+          </span>
+        </div>
+        {messages.length > 0 && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-text-muted transition-colors hover:bg-glass-hover hover:text-text-secondary"
+            title="Clear chat"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Clear
+          </button>
+        )}
+      </div>
+
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto px-2 py-4">
         {messages.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-6">
             <div className="text-center">
-              <h2 className="text-xl font-bold text-text-primary">AI Investment Assistant</h2>
               <p className="mt-2 text-sm text-text-muted">
                 Ask me about your portfolio, get recommendations, or analyze assets
               </p>
@@ -163,13 +217,8 @@ export default function ChatPage() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Ask about your investments..."
-              className="w-full rounded-xl border border-glass-border bg-glass py-3 pl-4 pr-12 text-sm text-text-primary placeholder:text-text-muted backdrop-blur-md outline-none transition-all focus:border-accent/50 focus:ring-2 focus:ring-accent/20"
+              className="w-full rounded-xl border border-glass-border bg-glass py-3 pl-4 pr-4 text-sm text-text-primary placeholder:text-text-muted backdrop-blur-md outline-none transition-all focus:border-accent/50 focus:ring-2 focus:ring-accent/20"
             />
-            <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-1">
-              {!isConnected && (
-                <span className="mr-2 h-2 w-2 rounded-full bg-loss animate-pulse" title="Disconnected" />
-              )}
-            </div>
           </div>
           <Button
             variant="primary"

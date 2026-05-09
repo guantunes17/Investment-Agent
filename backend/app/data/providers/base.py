@@ -17,3 +17,6 @@ class BaseDataProvider(ABC):
     @abstractmethod
     async def search(self, query: str) -> list[dict]:
         ...
+
+    async def get_news(self, ticker: str) -> list[dict]:
+        return []

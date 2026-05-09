@@ -6,6 +6,7 @@ from app.models.market_data import MarketSnapshot, BCBRateHistory
 from app.models.analysis import AnalysisResult
 from app.models.report import Report
 from app.models.notification import Notification
+from app.models.settings import UserSettings
 
 __all__ = [
     "Base",
@@ -21,4 +22,5 @@ __all__ = [
     "AnalysisResult",
     "Report",
     "Notification",
+    "UserSettings",
 ]

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { GlassCard } from "@/components/ui/glass-card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,14 @@ import {
   Scale,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface NotificationPrefs {
+  in_app_notifications: boolean;
+  notify_on_recommendation_change: boolean;
+  notify_on_rate_change: boolean;
+  price_alert_threshold: number;
+  maturity_alert_days: number;
+}
 
 function Toggle({
   checked,
@@ -54,16 +62,36 @@ function Toggle({
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
+
+  // Notification preferences (local state synced from/to backend)
   const [inAppNotifications, setInAppNotifications] = useState(true);
   const [priceAlertThreshold, setPriceAlertThreshold] = useState("5");
   const [maturityAlertDays, setMaturityAlertDays] = useState("30");
   const [notifyOnRecommendationChange, setNotifyOnRecommendationChange] = useState(true);
   const [notifyOnRateChange, setNotifyOnRateChange] = useState(true);
 
+  // Allocation targets
   const [stockTarget, setStockTarget] = useState("60");
   const [fiTarget, setFiTarget] = useState("30");
   const [fiiTarget, setFiiTarget] = useState("10");
 
+  // Load notification preferences
+  const { data: notifPrefs } = useQuery<NotificationPrefs>({
+    queryKey: ["notification-settings"],
+    queryFn: () => apiFetch<NotificationPrefs>("/settings/notifications"),
+  });
+
+  useEffect(() => {
+    if (notifPrefs) {
+      setInAppNotifications(notifPrefs.in_app_notifications ?? true);
+      setNotifyOnRecommendationChange(notifPrefs.notify_on_recommendation_change ?? true);
+      setNotifyOnRateChange(notifPrefs.notify_on_rate_change ?? true);
+      setPriceAlertThreshold(String(notifPrefs.price_alert_threshold ?? 5));
+      setMaturityAlertDays(String(notifPrefs.maturity_alert_days ?? 30));
+    }
+  }, [notifPrefs]);
+
+  // Load allocation targets
   const { data: targets } = useQuery<Record<string, number>>({
     queryKey: ["allocation-targets"],
     queryFn: () => apiFetch("/portfolio/allocation-targets"),
@@ -77,7 +105,22 @@ export default function SettingsPage() {
     }
   }, [targets]);
 
+  const saveNotifMutation = useMutation({
+    mutationFn: (prefs: NotificationPrefs) =>
+      apiFetch("/settings/notifications", {
+        method: "PUT",
+        body: JSON.stringify(prefs),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notification-settings"] });
+    },
+    onError: () => {
+      toast.error("Failed to save notification settings");
+    },
+  });
+
   const handleSave = async () => {
+    // Save allocation targets
     try {
       await apiFetch("/portfolio/allocation-targets", {
         method: "PUT",
@@ -87,12 +130,23 @@ export default function SettingsPage() {
           fii: Number(fiiTarget),
         }),
       });
-      toast.success("Settings saved successfully");
       queryClient.invalidateQueries({ queryKey: ["allocation-targets"] });
       queryClient.invalidateQueries({ queryKey: ["rebalance"] });
     } catch {
       toast.error("Failed to save allocation targets");
+      return;
     }
+
+    // Save notification preferences
+    await saveNotifMutation.mutateAsync({
+      in_app_notifications: inAppNotifications,
+      notify_on_recommendation_change: notifyOnRecommendationChange,
+      notify_on_rate_change: notifyOnRateChange,
+      price_alert_threshold: Number(priceAlertThreshold),
+      maturity_alert_days: Number(maturityAlertDays),
+    });
+
+    toast.success("Settings saved successfully");
   };
 
   const handleExportCSV = async (type: string) => {
@@ -170,7 +224,7 @@ export default function SettingsPage() {
           <h2 className="text-lg font-semibold text-text-primary">Allocation Targets</h2>
         </div>
         <p className="mb-4 text-sm text-text-muted">
-          Set your ideal portfolio allocation. Targets must sum to 100%.
+          Set your ideal portfolio allocation. Targets must sum to 100%. Saved to the database — persists across restarts.
         </p>
         <div className="grid grid-cols-3 gap-4">
           <Input
@@ -226,7 +280,11 @@ export default function SettingsPage() {
       </GlassCard>
 
       <div className="flex justify-end">
-        <Button variant="primary" onClick={handleSave}>
+        <Button
+          variant="primary"
+          onClick={handleSave}
+          disabled={saveNotifMutation.isPending}
+        >
           Save All Settings
         </Button>
       </div>

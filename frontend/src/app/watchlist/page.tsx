@@ -31,6 +31,10 @@ interface ApiWatchlistItem {
   identifier: string;
   name: string;
   created_at?: string;
+  current_price?: number | null;
+  change?: number | null;
+  change_pct?: number | null;
+  price_history?: number[];
 }
 
 function mapApiItem(api: ApiWatchlistItem): WatchlistItem {
@@ -42,9 +46,10 @@ function mapApiItem(api: ApiWatchlistItem): WatchlistItem {
     ticker: api.identifier,
     name: api.name?.trim() || api.identifier,
     assetType,
-    currentPrice: 0,
-    change: 0,
-    changePercent: 0,
+    currentPrice: api.current_price ?? 0,
+    change: api.change ?? 0,
+    changePercent: api.change_pct ?? 0,
+    priceHistory: api.price_history ?? [],
   };
 }
 

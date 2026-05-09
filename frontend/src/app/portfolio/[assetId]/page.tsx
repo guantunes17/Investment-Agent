@@ -1,6 +1,7 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { GlassCard } from "@/components/ui/glass-card";
 import { Badge, type RecommendationType } from "@/components/ui/badge";
 import { Gauge } from "@/components/ui/gauge";
@@ -10,23 +11,19 @@ import { CandlestickChart, type OHLCVData } from "@/components/charts/candlestic
 import { useAssetDetail, usePortfolio } from "@/hooks/use-portfolio";
 import { PositionAlignmentForm } from "@/app/portfolio/position-alignment-form";
 import { formatCurrency, formatPercent, cn } from "@/lib/utils";
-import { ArrowLeft, TrendingUp, Calendar, Percent, DollarSign } from "lucide-react";
+import { apiFetch } from "@/lib/api";
+import { ArrowLeft, TrendingUp, Calendar, Percent, DollarSign, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
 
-const mockOHLCV: OHLCVData[] = Array.from({ length: 60 }, (_, i) => {
-  const date = new Date();
-  date.setDate(date.getDate() - (60 - i));
-  const base = 30 + Math.random() * 10;
-  return {
-    time: date.toISOString().split("T")[0],
-    open: base,
-    high: base + Math.random() * 3,
-    low: base - Math.random() * 3,
-    close: base + (Math.random() - 0.5) * 4,
-    volume: Math.floor(Math.random() * 1000000),
-  };
-});
+const PERIODS = [
+  { label: "1M", value: "1mo" },
+  { label: "3M", value: "3mo" },
+  { label: "6M", value: "6mo" },
+  { label: "1Y", value: "1y" },
+] as const;
+
+type Period = (typeof PERIODS)[number]["value"];
 
 export default function AssetDetailPage({
   params,
@@ -36,6 +33,31 @@ export default function AssetDetailPage({
   const { assetId } = use(params);
   const { data: asset, isLoading, refetch } = useAssetDetail(assetId);
   const { refetch: refetchPortfolio } = usePortfolio();
+  const [period, setPeriod] = useState<Period>("3mo");
+
+  const isEquity = asset?.assetType === "stock" || asset?.assetType === "fii";
+
+  const {
+    data: ohlcvData,
+    isLoading: isOhlcvLoading,
+  } = useQuery<OHLCVData[]>({
+    queryKey: ["ohlcv", asset?.ticker, period],
+    queryFn: () =>
+      apiFetch<{ date: string; open: number; high: number; low: number; close: number; volume: number }[]>(
+        `/analysis/historical/${asset!.ticker}?period=${period}`
+      ).then((rows) =>
+        rows.map((r) => ({
+          time: r.date.slice(0, 10),
+          open: r.open,
+          high: r.high,
+          low: r.low,
+          close: r.close,
+          volume: r.volume,
+        }))
+      ),
+    enabled: !!asset?.ticker && isEquity,
+    staleTime: 5 * 60 * 1000,
+  });
 
   if (isLoading) {
     return (
@@ -60,7 +82,6 @@ export default function AssetDetailPage({
     );
   }
 
-  const isEquity = asset.assetType === "stock" || asset.assetType === "fii";
   const isFixedIncome = asset.assetType === "fixed-income";
 
   return (
@@ -104,21 +125,53 @@ export default function AssetDetailPage({
       {/* Chart section */}
       {isEquity && (
         <GlassCard>
-          <h3 className="mb-4 text-sm font-medium text-text-muted">Price Chart</h3>
-          <CandlestickChart
-            data={mockOHLCV}
-            overlays={[
-              { type: "SMA", period: 20, color: "#3366ff" },
-              { type: "EMA", period: 9, color: "#aa33ff" },
-            ]}
-            height={350}
-          />
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-medium text-text-muted">Price Chart</h3>
+            <div className="flex items-center gap-1">
+              {PERIODS.map((p) => (
+                <button
+                  key={p.value}
+                  onClick={() => setPeriod(p.value)}
+                  className={cn(
+                    "rounded-lg px-3 py-1 text-xs font-medium transition-colors",
+                    period === p.value
+                      ? "bg-accent/20 text-accent"
+                      : "text-text-muted hover:bg-glass-hover hover:text-text-secondary"
+                  )}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {isOhlcvLoading ? (
+            <div className="flex h-[350px] items-center justify-center">
+              <RefreshCw className="h-6 w-6 animate-spin text-text-muted" />
+            </div>
+          ) : (ohlcvData && ohlcvData.length > 0) ? (
+            <CandlestickChart
+              data={ohlcvData}
+              overlays={[
+                { type: "SMA", period: 20, color: "#3366ff" },
+                { type: "EMA", period: 9, color: "#aa33ff" },
+              ]}
+              height={350}
+            />
+          ) : (
+            <div className="flex h-[350px] items-center justify-center text-sm text-text-muted">
+              No chart data available for this period
+            </div>
+          )}
         </GlassCard>
       )}
 
+      {/* Fixed income yield progression (simulated — fixed income has no OHLCV) */}
       {isFixedIncome && (
         <GlassCard>
-          <h3 className="mb-4 text-sm font-medium text-text-muted">Yield Progression</h3>
+          <h3 className="mb-4 text-sm font-medium text-text-muted">
+            Yield Progression{" "}
+            <span className="text-[10px] text-text-muted/60">(simulated projection)</span>
+          </h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
